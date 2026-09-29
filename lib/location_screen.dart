@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:geocoding/geocoding.dart';
 
 import 'report_issue_screen.dart';
 
@@ -21,11 +25,183 @@ class _LocationScreenState extends State<LocationScreen> {
   static const bg = Color(0xFFF5F2EA);
 
   final MapController _mapController = MapController();
+  final Geocoding _geocoding = Geocoding();
+
+  final TextEditingController _searchController = TextEditingController();
+
+  Timer? _addressTimer;
+
+  // ----------------------------------------------------------
+  // SELECTED LOCATION
+  // ----------------------------------------------------------
+
+  LatLng selectedLocation = const LatLng(23.8103, 90.4125);
 
   Position? currentPosition;
 
-  bool loading = false;
+  // ----------------------------------------------------------
+  // LOCATION INFORMATION
+  // ----------------------------------------------------------
+
+  String selectedAddress = 'Dhaka, Bangladesh';
+
   String? errorMessage;
+
+  bool loading = false;
+  bool mapReady = false;
+  bool searching = false;
+
+  // ----------------------------------------------------------
+  // MAP READY
+  // ----------------------------------------------------------
+
+  void _onMapReady() {
+    mapReady = true;
+  }
+
+  // ----------------------------------------------------------
+  // MAP MOVED
+  // ----------------------------------------------------------
+
+  void _onPositionChanged(MapCamera camera, bool hasGesture) {
+    if (!mounted) return;
+
+    final center = camera.center;
+
+    setState(() {
+      selectedLocation = center;
+    });
+
+    // Don't reverse-geocode every single map movement.
+    // Wait until the user stops moving the map.
+    _addressTimer?.cancel();
+
+    _addressTimer = Timer(const Duration(milliseconds: 700), () {
+      _getAddressFromCoordinates(center.latitude, center.longitude);
+    });
+  }
+
+  // ----------------------------------------------------------
+  // REVERSE GEOCODING
+  // COORDINATES -> ADDRESS
+  // ----------------------------------------------------------
+
+  Future<void> _getAddressFromCoordinates(
+    double latitude,
+    double longitude,
+  ) async {
+    try {
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        latitude,
+        longitude,
+      );
+
+      if (placemarks.isEmpty || !mounted) return;
+
+      final place = placemarks.first;
+
+      final parts = <String>[];
+
+      if (place.street != null && place.street!.trim().isNotEmpty) {
+        parts.add(place.street!.trim());
+      }
+
+      if (place.subLocality != null && place.subLocality!.trim().isNotEmpty) {
+        parts.add(place.subLocality!.trim());
+      }
+
+      if (place.locality != null && place.locality!.trim().isNotEmpty) {
+        parts.add(place.locality!.trim());
+      }
+
+      if (place.administrativeArea != null &&
+          place.administrativeArea!.trim().isNotEmpty &&
+          !parts.contains(place.administrativeArea!.trim())) {
+        parts.add(place.administrativeArea!.trim());
+      }
+
+      if (place.country != null &&
+          place.country!.trim().isNotEmpty &&
+          !parts.contains(place.country!.trim())) {
+        parts.add(place.country!.trim());
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        if (parts.isNotEmpty) {
+          selectedAddress = parts.join(', ');
+        } else {
+          selectedAddress = 'Address not available for this location';
+        }
+      });
+    } catch (e) {
+      debugPrint('REVERSE GEOCODING ERROR: $e');
+    }
+  }
+
+  // ----------------------------------------------------------
+  // SEARCH ADDRESS
+  // ADDRESS -> COORDINATES
+  // ----------------------------------------------------------
+
+  Future<void> _searchLocation() async {
+    final query = _searchController.text.trim();
+
+    if (query.isEmpty) {
+      return;
+    }
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      searching = true;
+      errorMessage = null;
+    });
+
+    try {
+      final locations = await _geocoding.locationFromAddress(query);
+
+      if (locations.isEmpty) {
+        throw Exception(
+          'Location not found. Try a road, area, city or address.',
+        );
+      }
+
+      final location = locations.first;
+
+      final newPoint = LatLng(location.latitude, location.longitude);
+
+      if (!mounted) return;
+
+      setState(() {
+        selectedLocation = newPoint;
+        selectedAddress = query;
+        searching = false;
+        errorMessage = null;
+      });
+
+      if (mapReady) {
+        _mapController.move(newPoint, 17);
+      }
+
+      // Get the actual address after moving.
+      await _getAddressFromCoordinates(location.latitude, location.longitude);
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        searching = false;
+        errorMessage =
+            'Location not found. Try something like '
+            '"Sagardighi Road, Sylhet".';
+      });
+    }
+  }
+
+  // ----------------------------------------------------------
+  // GET CURRENT GPS LOCATION
+  // ----------------------------------------------------------
 
   Future<void> _getCurrentLocation() async {
     setState(() {
@@ -34,46 +210,29 @@ class _LocationScreenState extends State<LocationScreen> {
     });
 
     try {
-      // 1. Check GPS/location service
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
-        setState(() {
-          loading = false;
-          errorMessage =
-              'Location service is disabled. Please turn on GPS/Location.';
-        });
-        return;
+        throw Exception('Please turn on GPS / Location service.');
       }
 
-      // 2. Check permission
       LocationPermission permission = await Geolocator.checkPermission();
 
-      // 3. Request permission
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
-      // 4. Permission denied
       if (permission == LocationPermission.denied) {
-        setState(() {
-          loading = false;
-          errorMessage = 'Location permission was denied.';
-        });
-        return;
+        throw Exception('Location permission was denied.');
       }
 
-      // 5. Permission permanently denied
       if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          loading = false;
-          errorMessage =
-              'Location permission is permanently denied. Please enable it from settings.';
-        });
-        return;
+        throw Exception(
+          'Location permission is permanently denied. '
+          'Enable it from app settings.',
+        );
       }
 
-      // 6. Get current GPS location
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -82,172 +241,361 @@ class _LocationScreenState extends State<LocationScreen> {
 
       if (!mounted) return;
 
+      final gpsPoint = LatLng(position.latitude, position.longitude);
+
       setState(() {
         currentPosition = position;
+        selectedLocation = gpsPoint;
         loading = false;
         errorMessage = null;
+        selectedAddress = 'Finding current address...';
       });
 
-      // 7. Move map to current location
-      _mapController.move(LatLng(position.latitude, position.longitude), 16);
-    } catch (e) {
-      debugPrint('LOCATION ERROR: $e');
+      if (mapReady) {
+        _mapController.move(gpsPoint, 18);
+      }
 
+      await _getAddressFromCoordinates(position.latitude, position.longitude);
+    } catch (e) {
       if (!mounted) return;
 
       setState(() {
         loading = false;
-        errorMessage = 'Could not get your location. Please try again.';
+        errorMessage = e.toString().replaceFirst('Exception: ', '');
       });
     }
   }
 
-  void _useThisLocation() {
+  // ----------------------------------------------------------
+  // GO TO CURRENT LOCATION
+  // ----------------------------------------------------------
+
+  void _goToMyLocation() {
     if (currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please get your current location first.'),
-        ),
-      );
+      _getCurrentLocation();
       return;
     }
 
+    final point = LatLng(currentPosition!.latitude, currentPosition!.longitude);
+
+    setState(() {
+      selectedLocation = point;
+      selectedAddress = 'Finding current address...';
+    });
+
+    _mapController.move(point, 18);
+
+    _getAddressFromCoordinates(point.latitude, point.longitude);
+  }
+
+  // ----------------------------------------------------------
+  // GOOGLE DIRECTIONS
+  // ----------------------------------------------------------
+
+  Future<void> _openDirections() async {
+    final lat = selectedLocation.latitude;
+    final lng = selectedLocation.longitude;
+
+    final url = Uri.parse(
+      'https://www.google.com/maps/dir/?api=1'
+      '&destination=$lat,$lng'
+      '&travelmode=walking',
+    );
+
+    await _openExternalMap(url);
+  }
+
+  // ----------------------------------------------------------
+  // GOOGLE STREET VIEW
+  // ----------------------------------------------------------
+
+  Future<void> _openStreetView() async {
+    final lat = selectedLocation.latitude;
+    final lng = selectedLocation.longitude;
+
+    final url = Uri.parse(
+      'https://www.google.com/maps/@?api=1'
+      '&map_action=pano'
+      '&viewpoint=$lat,$lng',
+    );
+
+    await _openExternalMap(url);
+  }
+
+  // ----------------------------------------------------------
+  // OPEN EXTERNAL MAP
+  // ----------------------------------------------------------
+
+  Future<void> _openExternalMap(Uri url) async {
+    try {
+      final opened = await launchUrl(url, mode: LaunchMode.externalApplication);
+
+      if (!opened && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Google Maps.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open the map.')));
+    }
+  }
+
+  // ----------------------------------------------------------
+  // CONFIRM LOCATION
+  // ----------------------------------------------------------
+
+  void _useThisLocation() {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ReportIssueScreen(
           selectedImage: widget.selectedImage,
-          latitude: currentPosition!.latitude,
-          longitude: currentPosition!.longitude,
+          latitude: selectedLocation.latitude,
+          longitude: selectedLocation.longitude,
         ),
       ),
     );
   }
 
+  // ----------------------------------------------------------
+  // BACK
+  // ----------------------------------------------------------
+
+  void _goBack() {
+    Navigator.pop(context);
+  }
+
+  // ----------------------------------------------------------
+  // DISPOSE
+  // ----------------------------------------------------------
+
+  @override
+  void dispose() {
+    _addressTimer?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ----------------------------------------------------------
+  // UI
+  // ----------------------------------------------------------
+
   @override
   Widget build(BuildContext context) {
-    final mapCenter = currentPosition == null
-        ? const LatLng(23.8103, 90.4125)
-        : LatLng(currentPosition!.latitude, currentPosition!.longitude);
-
     return Scaffold(
       backgroundColor: bg,
 
+      // ======================================================
+      // APP BAR
+      // ======================================================
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
-        automaticallyImplyLeading: true,
         iconTheme: const IconThemeData(color: navy),
         title: const Text(
-          'Location',
+          'Confiem Location',
           style: TextStyle(color: navy, fontWeight: FontWeight.bold),
         ),
       ),
 
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // ==================================================
+              // TITLE
+              // ==================================================
               const Text(
                 'Where did this happen?',
                 style: TextStyle(
-                  fontSize: 24,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: navy,
                 ),
               ),
 
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
 
               const Text(
-                'Get your current location and confirm it on the map.',
+                'Find the location or move the map '
+                'to select the exact problem area.',
                 style: TextStyle(color: Colors.black54, height: 1.4),
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
+              // ==================================================
+              // SEARCH BAR
+              // ==================================================
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: TextField(
+                  controller: _searchController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _searchLocation(),
+                  decoration: InputDecoration(
+                    hintText: 'Search road, area or address',
+                    prefixIcon: const Icon(Icons.search, color: navy),
+                    suffixIcon: searching
+                        ? const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: orange,
+                              ),
+                            ),
+                          )
+                        : IconButton(
+                            onPressed: _searchLocation,
+                            icon: const Icon(
+                              Icons.arrow_forward,
+                              color: orange,
+                            ),
+                          ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 10,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              // ==================================================
               // MAP
+              // ==================================================
               Expanded(
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(20),
                   child: Stack(
                     children: [
                       FlutterMap(
                         mapController: _mapController,
+
                         options: MapOptions(
-                          initialCenter: mapCenter,
-                          initialZoom: 12,
+                          initialCenter: selectedLocation,
+
+                          initialZoom: 13,
+
+                          onMapReady: _onMapReady,
+
+                          onPositionChanged: _onPositionChanged,
+
+                          interactionOptions: const InteractionOptions(
+                            flags: InteractiveFlag.all,
+                          ),
                         ),
+
                         children: [
                           TileLayer(
                             urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                'https://tile.openstreetmap.org/'
+                                '{z}/{x}/{y}.png',
+
                             userAgentPackageName: 'com.example.civicmind',
                           ),
-
-                          if (currentPosition != null)
-                            MarkerLayer(
-                              markers: [
-                                Marker(
-                                  point: LatLng(
-                                    currentPosition!.latitude,
-                                    currentPosition!.longitude,
-                                  ),
-                                  width: 55,
-                                  height: 55,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: orange,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 4,
-                                      ),
-                                      boxShadow: const [
-                                        BoxShadow(
-                                          blurRadius: 8,
-                                          color: Colors.black26,
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.location_on,
-                                      color: Colors.white,
-                                      size: 28,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
                         ],
                       ),
 
-                      // Current location floating button
+                      // ==================================================
+                      // FIXED CENTER PIN
+                      // ==================================================
+                      const IgnorePointer(
+                        child: Center(
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: 34),
+                            child: Icon(
+                              Icons.location_on,
+                              size: 50,
+                              color: orange,
+                              shadows: [
+                                Shadow(
+                                  color: Colors.black38,
+                                  blurRadius: 6,
+                                  offset: Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // ==================================================
+                      // CENTER DOT
+                      // ==================================================
+                      const IgnorePointer(
+                        child: Center(
+                          child: Padding(
+                            padding: EdgeInsets.only(top: 14),
+                            child: Icon(Icons.circle, size: 7, color: navy),
+                          ),
+                        ),
+                      ),
+
+                      // ==================================================
+                      // MY LOCATION BUTTON
+                      // ==================================================
                       Positioned(
-                        right: 14,
-                        bottom: 14,
+                        right: 12,
+                        bottom: 16,
                         child: FloatingActionButton(
+                          heroTag: 'myLocationButton',
+
                           mini: true,
+
                           backgroundColor: Colors.white,
+
                           foregroundColor: navy,
-                          onPressed: currentPosition == null
-                              ? _getCurrentLocation
-                              : () {
-                                  _mapController.move(
-                                    LatLng(
-                                      currentPosition!.latitude,
-                                      currentPosition!.longitude,
-                                    ),
-                                    16,
-                                  );
-                                },
+
+                          onPressed: loading ? null : _goToMyLocation,
+
                           child: const Icon(Icons.my_location),
                         ),
                       ),
 
-                      // Loading overlay
+                      // ==================================================
+                      // OSM ATTRIBUTION
+                      // ==================================================
+                      Positioned(
+                        left: 10,
+                        bottom: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.9),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            '© OpenStreetMap contributors',
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // ==================================================
+                      // LOADING
+                      // ==================================================
                       if (loading)
                         Container(
                           color: Colors.white70,
@@ -256,12 +604,14 @@ class _LocationScreenState extends State<LocationScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 CircularProgressIndicator(color: orange),
+
                                 SizedBox(height: 12),
+
                                 Text(
                                   'Finding your location...',
                                   style: TextStyle(
                                     color: navy,
-                                    fontWeight: FontWeight.w500,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
@@ -273,13 +623,16 @@ class _LocationScreenState extends State<LocationScreen> {
                 ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
 
+              // ==================================================
               // ERROR
+              // ==================================================
               if (errorMessage != null)
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
@@ -287,101 +640,189 @@ class _LocationScreenState extends State<LocationScreen> {
                   ),
                   child: Text(
                     errorMessage!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.red.shade700),
+                    style: TextStyle(color: Colors.red.shade700, fontSize: 13),
                   ),
                 ),
 
-              const SizedBox(height: 12),
-
-              // Coordinates
-              if (currentPosition != null)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.location_on, color: orange),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          '${currentPosition!.latitude.toStringAsFixed(6)}, '
-                          '${currentPosition!.longitude.toStringAsFixed(6)}',
-                          style: const TextStyle(
-                            color: navy,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      Text(
-                        '±${currentPosition!.accuracy.toStringAsFixed(0)}m',
-                        style: const TextStyle(
-                          color: Colors.black54,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-              const SizedBox(height: 12),
-
-              // Get location / update
-              SizedBox(
+              // ==================================================
+              // ADDRESS CARD
+              // ==================================================
+              Container(
                 width: double.infinity,
-                height: 50,
-                child: OutlinedButton.icon(
-                  onPressed: loading ? null : _getCurrentLocation,
-                  icon: const Icon(Icons.my_location, color: navy),
-                  label: Text(
-                    currentPosition == null
-                        ? 'Get Current Location'
-                        : 'Update Location',
-                    style: const TextStyle(
-                      color: navy,
-                      fontWeight: FontWeight.bold,
+                padding: const EdgeInsets.all(11),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.location_on, color: orange),
+
+                    const SizedBox(width: 8),
+
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Selected problem location',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                            ),
+                          ),
+
+                          const SizedBox(height: 3),
+
+                          Text(
+                            selectedAddress,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: navy,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+
+                          const SizedBox(height: 3),
+
+                          Text(
+                            '${selectedLocation.latitude.toStringAsFixed(6)}, '
+                            '${selectedLocation.longitude.toStringAsFixed(6)}',
+                            style: const TextStyle(
+                              color: Colors.black54,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: navy),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
 
-              // NEXT
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: ElevatedButton(
-                  onPressed: currentPosition == null || loading
-                      ? null
-                      : _useThisLocation,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: orange,
-                    disabledBackgroundColor: Colors.grey.shade300,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
+              // ==================================================
+              // DIRECTIONS + STREET VIEW
+              // ==================================================
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: loading ? null : _openDirections,
+
+                      icon: const Icon(Icons.directions, size: 19),
+
+                      label: const Text('Directions'),
+
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: navy,
+
+                        side: const BorderSide(color: navy),
+
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                  child: const Text(
-                    'Use This Location',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: loading ? null : _openStreetView,
+
+                      icon: const Icon(Icons.streetview, size: 19),
+
+                      label: const Text('Street View'),
+
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: navy,
+
+                        side: const BorderSide(color: navy),
+
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
+              ),
+
+              const SizedBox(height: 8),
+
+              // ==================================================
+              // CURRENT LOCATION + CONFIRM
+              // ==================================================
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: loading ? null : _getCurrentLocation,
+
+                      icon: const Icon(Icons.gps_fixed),
+
+                      label: const Text(
+                        'My Location',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: navy,
+
+                        side: const BorderSide(color: navy),
+
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: loading ? null : _useThisLocation,
+
+                      icon: const Icon(Icons.check_circle, color: Colors.white),
+
+                      label: const Text(
+                        'Confirm Location',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: orange,
+
+                        disabledBackgroundColor: Colors.grey.shade300,
+
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
