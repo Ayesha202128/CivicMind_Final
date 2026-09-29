@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'login_screen.dart';
+import 'signin_screen.dart';
 import 'home_screen.dart'; // আপনার আসল home screen — নাম বদলে দিন যদি অন্য কিছু হয়
 
 class SplashScreen extends StatefulWidget {
@@ -29,7 +29,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (session == null) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute(builder: (_) => const SigninScreen()),
       );
     } else {
       Navigator.pushReplacement(

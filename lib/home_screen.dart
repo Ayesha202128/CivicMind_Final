@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'login_screen.dart';
+import 'signin_screen.dart';
+import 'photo_upload_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,10 +53,10 @@ class _HomeScreenState extends State<HomeScreen> {
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
-          "Log out?",
+          "Sign out?",
           style: TextStyle(color: navy, fontWeight: FontWeight.bold),
         ),
-        content: const Text("Are you sure you want to log out of CivicMind?"),
+        content: const Text("Are you sure you want to sign out of CivicMind?"),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -67,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text(
-              "Log out",
+              "Sign out",
               style: TextStyle(color: orange, fontWeight: FontWeight.bold),
             ),
           ),
@@ -82,7 +83,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      MaterialPageRoute(builder: (_) => const SigninScreen()),
       (route) => false,
     );
   }
@@ -127,7 +128,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             onPressed: _logout,
             icon: const Icon(Icons.logout_rounded, color: navy),
-            tooltip: "Log out",
+            tooltip: "Sign out",
           ),
           const SizedBox(width: 6),
         ],
@@ -226,14 +227,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 54,
                     child: ElevatedButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              "Report submission screen not built yet",
-                            ),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const PhotoUploadScreen(),
                           ),
                         );
                       },
+                      // onPressed: () {
+                      //   Navigator.push(
+                      //     context,
+                      //     MaterialPageRoute(
+                      //       builder: (_) => const LocationTestScreen(),
+                      //     ),
+                      //   );
+                      // },
                       icon: const Icon(
                         Icons.add_a_photo_outlined,
                         color: Colors.white,
