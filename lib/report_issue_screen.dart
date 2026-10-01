@@ -35,8 +35,11 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
     'Pothole',
     'Garbage',
     'Electric Hazard',
-    'Fallen Tree',
-    'Water Leak',
+    'Illegal Parking',
+    'Water Logging',
+    'Occupying Sidewalk/Road',
+    'Heavy Traffic Congestion',
+    'Streetlight',
   ];
 
   @override

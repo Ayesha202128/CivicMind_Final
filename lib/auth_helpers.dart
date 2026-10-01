@@ -75,9 +75,8 @@ String? validateEmail(String? v) {
 String? validatePhone(String? v) {
   if (v == null || v.trim().isEmpty) return 'Phone number is required';
   final cleaned = v.replaceAll(RegExp(r'[\s\-]'), '');
-  if (!RegExp(r'^\+?\d{10,15}$').hasMatch(cleaned)) {
+  if (!RegExp(r'^\+?\d{10,15}$').hasMatch(cleaned))
     return 'Enter a valid phone number';
-  }
   return null;
 }
 
@@ -85,16 +84,13 @@ String? validatePhone(String? v) {
 String? validatePassword(String? v) {
   if (v == null || v.isEmpty) return 'Password is required';
   if (v.length < 8) return 'Use at least 8 characters';
-  if (!RegExp(r'[A-Z]').hasMatch(v)) {
+  if (!RegExp(r'[A-Z]').hasMatch(v))
     return 'Add at least one uppercase letter (A-Z)';
-  }
-  if (!RegExp(r'[a-z]').hasMatch(v)) {
+  if (!RegExp(r'[a-z]').hasMatch(v))
     return 'Add at least one lowercase letter (a-z)';
-  }
   if (!RegExp(r'\d').hasMatch(v)) return 'Add at least one number (0-9)';
-  if (!RegExp(r'[^A-Za-z0-9]').hasMatch(v)) {
+  if (!RegExp(r'[^A-Za-z0-9]').hasMatch(v))
     return 'Add at least one symbol (e.g. @ # ! %)';
-  }
   return null;
 }
 
@@ -185,9 +181,8 @@ class PasswordStrengthIndicator extends StatelessWidget {
     int s = 0;
     if (password.length >= 8) s++;
     if (RegExp(r'[A-Z]').hasMatch(password) &&
-        RegExp(r'[a-z]').hasMatch(password)) {
+        RegExp(r'[a-z]').hasMatch(password))
       s++;
-    }
     if (RegExp(r'\d').hasMatch(password)) s++;
     if (RegExp(r'[^A-Za-z0-9]').hasMatch(password)) s++;
     return s;
