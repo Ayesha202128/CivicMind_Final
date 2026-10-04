@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:typed_data';
-import 'home_screen.dart';
 import 'report_review_screen.dart';
 
 class ReportIssueScreen extends StatefulWidget {
@@ -48,132 +46,6 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
     titleController.dispose();
     descriptionController.dispose();
     super.dispose();
-  }
-
-  Future<void> _submitReport() async {
-    // 1. Title check
-    if (titleController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a title for the issue.')),
-      );
-      return;
-    }
-
-    // 2. Category check
-    if (selectedCategory == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select an issue category.')),
-      );
-      return;
-    }
-
-    // 3. Description check
-    if (descriptionController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please describe the issue.')),
-      );
-      return;
-    }
-
-    // 4. Check logged-in user
-    final user = supabase.auth.currentUser;
-
-    if (user == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please log in again.')));
-      return;
-    }
-
-    // 5. Show loading
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) {
-        return const Center(child: CircularProgressIndicator(color: orange));
-      },
-    );
-
-    try {
-      // 6. Insert report into Supabase
-      // 6. Read selected image
-      final Uint8List imageBytes = await widget.selectedImage.readAsBytes();
-
-      // 7. Create a unique file path
-      final filePath =
-          '${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-      // 8. Upload image to Supabase Storage
-      await supabase.storage
-          .from('report-images')
-          .uploadBinary(
-            filePath,
-            imageBytes,
-            fileOptions: const FileOptions(
-              contentType: 'image/jpeg',
-              upsert: false,
-            ),
-          );
-
-      // 9. Get public image URL
-      final imageUrl = supabase.storage
-          .from('report-images')
-          .getPublicUrl(filePath);
-
-      // 10. Insert report into Supabase
-      await supabase.from('reports').insert({
-        'user_id': user.id,
-        'title': titleController.text.trim(),
-        'category': selectedCategory,
-        'description': descriptionController.text.trim(),
-        'image_url': imageUrl,
-        'latitude': widget.latitude,
-        'longitude': widget.longitude,
-      });
-
-      // 7. Close loading dialog
-      if (!mounted) return;
-      Navigator.pop(context);
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Report submitted successfully!')),
-      );
-
-      // Go back to Home
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
-        (route) => false,
-      );
-    } on PostgrestException catch (error) {
-      // Close loading dialog
-      if (mounted) {
-        Navigator.pop(context);
-      }
-
-      debugPrint('REPORT INSERT ERROR: ${error.message}');
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to submit report: ${error.message}')),
-      );
-    } catch (e) {
-      // Close loading dialog
-      if (mounted) {
-        Navigator.pop(context);
-      }
-
-      debugPrint('REPORT ERROR: $e');
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Something went wrong. Please try again.'),
-        ),
-      );
-    }
   }
 
   @override
@@ -278,6 +150,7 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: isSelected
+                          // ignore: deprecated_member_use
                           ? orange.withOpacity(0.10)
                           : Colors.white,
                       borderRadius: BorderRadius.circular(14),

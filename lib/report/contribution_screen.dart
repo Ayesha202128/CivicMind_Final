@@ -253,15 +253,15 @@ class _ContributionScreenState extends State<ContributionScreen> {
                 ),
               ),
 
-              Container(
-                width: 40,
-                height: 40,
-                decoration: const BoxDecoration(
-                  color: green,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person_outline, color: Colors.white),
-              ),
+              // Container(
+              //   width: 40,
+              //   height: 40,
+              //   decoration: const BoxDecoration(
+              //     color: green,
+              //     shape: BoxShape.circle,
+              //   ),
+              //   child: const Icon(Icons.person_outline, color: Colors.white),
+              // ),
             ],
           ),
         ),

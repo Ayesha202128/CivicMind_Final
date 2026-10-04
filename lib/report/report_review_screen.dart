@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -34,6 +35,9 @@ class ReportReviewScreen extends StatefulWidget {
 class _ReportReviewScreenState extends State<ReportReviewScreen> {
   final supabase = Supabase.instance.client;
 
+  // Geocoding instance
+  final Geocoding _geocoding = Geocoding();
+
   static const navy = Color(0xFF16233D);
   static const green = Color(0xFF007A5E);
   static const orange = Color(0xFFAA5B00);
@@ -41,18 +45,39 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
   Uint8List? imageBytes;
 
+  // ==========================================================
+  // LOCATION
+  // ==========================================================
+
+  String locationText = 'Finding location...';
+  bool loadingLocation = true;
+
+  // ==========================================================
+  // DUPLICATE DETECTION
+  // ==========================================================
+
   bool checkingDuplicate = true;
-  bool submitting = false;
 
   List<Map<String, dynamic>> similarReports = [];
+
+  // ==========================================================
+  // SUBMISSION
+  // ==========================================================
+
+  bool submitting = false;
 
   @override
   void initState() {
     super.initState();
 
     _loadImage();
+    _loadAddress();
     _checkForDuplicates();
   }
+
+  // ==========================================================
+  // LOAD IMAGE
+  // ==========================================================
 
   Future<void> _loadImage() async {
     try {
@@ -68,6 +93,176 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     }
   }
 
+  // ==========================================================
+  // LOAD HUMAN READABLE LOCATION
+  // ==========================================================
+
+  // ==========================================================
+  // CHECK PLUS CODE
+  // ==========================================================
+
+  bool _isPlusCode(String value) {
+    final text = value.trim();
+
+    // Examples:
+    // VVW6+FG5
+    // 7Q5V+2M Sylhet
+    //
+    // A plus sign usually indicates a Google Plus Code.
+    return RegExp(
+      r'^[23456789CFGHJMPQRVWX]{4,}\+',
+    ).hasMatch(text.toUpperCase());
+  }
+
+  // ==========================================================
+  // CHECK DUPLICATE ADDRESS PART
+  // ==========================================================
+
+  bool _isSameAsAny(String value, List<String> parts) {
+    final target = value.trim().toLowerCase();
+
+    return parts.any((part) => part.trim().toLowerCase() == target);
+  }
+
+  Future<void> _loadAddress() async {
+    try {
+      final placemarks = await _geocoding.placemarkFromCoordinates(
+        widget.latitude,
+        widget.longitude,
+      );
+
+      if (placemarks.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          locationText = 'Location address unavailable';
+          loadingLocation = false;
+        });
+
+        return;
+      }
+
+      // ---------------------------------------------------------
+      // Choose the most useful placemark
+      // ---------------------------------------------------------
+
+      Placemark place = placemarks.first;
+
+      for (final p in placemarks) {
+        final road = p.thoroughfare?.trim();
+
+        if (road != null && road.isNotEmpty && !_isPlusCode(road)) {
+          place = p;
+          break;
+        }
+      }
+
+      // ---------------------------------------------------------
+      // Build CLEAN address
+      // ---------------------------------------------------------
+
+      final List<String> parts = [];
+
+      void addPart(String? value) {
+        if (value == null) return;
+
+        final text = value.trim();
+
+        if (text.isEmpty) return;
+
+        if (_isPlusCode(text)) return;
+
+        // Prevent duplicate values
+        final alreadyExists = parts.any(
+          (existing) => existing.toLowerCase() == text.toLowerCase(),
+        );
+
+        if (!alreadyExists) {
+          parts.add(text);
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 1. HOUSE NUMBER + ROAD NAME
+      //
+      // Example:
+      // 17 + Lamabazar Road
+      // → 17 Lamabazar Road
+      // ---------------------------------------------------------
+
+      final houseNumber = place.subThoroughfare?.trim();
+      final roadName = place.thoroughfare?.trim();
+
+      if (houseNumber != null &&
+          houseNumber.isNotEmpty &&
+          roadName != null &&
+          roadName.isNotEmpty &&
+          !_isPlusCode(roadName)) {
+        addPart('$houseNumber $roadName');
+      } else {
+        // If house number is unavailable,
+        // use road name only.
+        addPart(roadName);
+
+        // Only use street as fallback.
+        if (roadName == null || roadName.isEmpty) {
+          addPart(place.street);
+        }
+      }
+
+      // ---------------------------------------------------------
+      // 2. SUB-LOCALITY
+      //
+      // Example:
+      // Lamabazar
+      // ---------------------------------------------------------
+
+      addPart(place.subLocality);
+
+      // ---------------------------------------------------------
+      // 3. CITY / LOCALITY
+      //
+      // Example:
+      // Sylhet
+      // ---------------------------------------------------------
+
+      addPart(place.locality);
+
+      // ---------------------------------------------------------
+      // 4. COUNTRY
+      //
+      // Example:
+      // Bangladesh
+      // ---------------------------------------------------------
+
+      addPart(place.country);
+
+      // ---------------------------------------------------------
+      // FINAL CLEAN ADDRESS
+      // ---------------------------------------------------------
+
+      final address = parts.join(', ');
+
+      if (!mounted) return;
+
+      setState(() {
+        locationText = address.isEmpty
+            ? 'Location address unavailable'
+            : address;
+
+        loadingLocation = false;
+      });
+    } catch (e) {
+      debugPrint('ADDRESS LOAD ERROR: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        locationText = 'Location address unavailable';
+        loadingLocation = false;
+      });
+    }
+  }
   // ==========================================================
   // DISTANCE CALCULATION
   // ==========================================================
@@ -102,7 +297,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
   String _formatDistance(double meters) {
     if (meters < 1000) {
-      return '${meters.round()}m away';
+      return '${meters.round()} m away';
     }
 
     return '${(meters / 1000).toStringAsFixed(1)} km away';
@@ -115,17 +310,19 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
   Future<void> _checkForDuplicates() async {
     try {
       /*
-       * Get reports with the same category.
+       * Duplicate rules:
        *
-       * We don't compare every report in the system.
-       * Only reports from the same category are considered.
+       * 1. Same category
+       * 2. Existing report is NOT resolved
+       * 3. Existing report is within 500 meters
        */
 
       final response = await supabase
           .from('reports')
           .select(
             'id, title, category, description, '
-            'image_url, latitude, longitude, status, created_at',
+            'image_url, latitude, longitude, '
+            'status, created_at',
           )
           .eq('category', widget.category)
           .neq('status', 'resolved')
@@ -153,10 +350,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
           reportLng,
         );
 
-        /*
-         * 500 meter duplicate detection radius.
-         */
-
+        // 500 meter duplicate radius
         if (distance <= 500) {
           final report = Map<String, dynamic>.from(item);
 
@@ -219,10 +413,26 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
   }
 
   // ==========================================================
-  // FINAL REPORT SUBMISSION
+  // FINAL NEW REPORT SUBMISSION
   // ==========================================================
 
   Future<void> _submitNewReport() async {
+    // Safety check:
+    // Duplicate থাকলে নতুন report submit করা যাবে না।
+
+    if (similarReports.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A similar report already exists. '
+            'Please contribute to it instead.',
+          ),
+        ),
+      );
+
+      return;
+    }
+
     final user = supabase.auth.currentUser;
 
     if (user == null) {
@@ -265,9 +475,16 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to submit report: ${error.message}')),
+        SnackBar(
+          content: Text(
+            'Failed to submit report: '
+            '${error.message}',
+          ),
+        ),
       );
     } catch (e) {
+      debugPrint('REPORT SUBMISSION ERROR: $e');
+
       if (!mounted) return;
 
       setState(() {
@@ -276,14 +493,17 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Something went wrong. Please try again.'),
+          content: Text(
+            'Something went wrong. '
+            'Please try again.',
+          ),
         ),
       );
     }
   }
 
   // ==========================================================
-  // SUCCESS
+  // SUCCESS DIALOG
   // ==========================================================
 
   void _showSuccessDialog() {
@@ -323,7 +543,8 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
               const SizedBox(height: 10),
 
               const Text(
-                'Your civic issue has been successfully submitted.',
+                'Your civic issue has been '
+                'successfully submitted.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.black54, height: 1.4),
               ),
@@ -425,23 +646,26 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
   // ==========================================================
 
   Widget _similarReportCard(Map<String, dynamic> report) {
-    final imageUrl = report['image_url'] as String?;
+    final imageUrl = report['image_url']?.toString() ?? '';
 
-    final distance = report['distance'] as double;
+    final distance = (report['distance'] as num?)?.toDouble() ?? 0.0;
 
     final title = report['title']?.toString() ?? 'Civic Issue';
 
     final description = report['description']?.toString() ?? '';
 
+    final status = report['status']?.toString() ?? 'new';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 15),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE4E7EC)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -450,6 +674,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // STATUS + DISTANCE
           Row(
             children: [
               Container(
@@ -461,12 +686,12 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                   color: const Color(0xFFE2F3FF),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: const Text(
-                  'In Progress',
-                  style: TextStyle(
+                child: Text(
+                  status.toUpperCase(),
+                  style: const TextStyle(
                     color: Color(0xFF176B9E),
                     fontWeight: FontWeight.bold,
-                    fontSize: 11,
+                    fontSize: 10,
                   ),
                 ),
               ),
@@ -486,12 +711,13 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
           const SizedBox(height: 13),
 
+          // IMAGE + DETAILS
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
-                child: imageUrl != null && imageUrl.isNotEmpty
+                child: imageUrl.isNotEmpty
                     ? Image.network(
                         imageUrl,
                         width: 105,
@@ -511,7 +737,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.category,
+                      report['category']?.toString() ?? widget.category,
                       style: const TextStyle(
                         color: green,
                         fontWeight: FontWeight.bold,
@@ -552,47 +778,64 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
           const SizedBox(height: 15),
 
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    _showFullReport(report);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: navy,
-                    side: const BorderSide(color: Color(0xFFD0D5DD)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                  child: const Text('View Full Report'),
+          // VIEW FULL REPORT
+          SizedBox(
+            width: double.infinity,
+            height: 46,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                _showFullReport(report);
+              },
+              icon: const Icon(Icons.visibility_outlined),
+              label: const Text(
+                'View Full Report',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: navy,
+                side: const BorderSide(color: Color(0xFFD0D5DD)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(23),
                 ),
               ),
+            ),
+          ),
 
-              const SizedBox(width: 10),
+          const SizedBox(height: 9),
 
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    _openContribution(report);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: orange,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  ),
-                  child: const Text('Contribute'),
+          // CONTRIBUTION BUTTON
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                _openContribution(report);
+              },
+              icon: const Icon(Icons.add_task_outlined, color: Colors.white),
+              label: const Text(
+                'Contribute to This Report',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-            ],
+              style: ElevatedButton.styleFrom(
+                backgroundColor: orange,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(25),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
+
+  // ==========================================================
+  // IMAGE PLACEHOLDER
+  // ==========================================================
 
   Widget _imagePlaceholder() {
     return Container(
@@ -608,6 +851,8 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
   // ==========================================================
 
   void _showFullReport(Map<String, dynamic> report) {
+    final distance = (report['distance'] as num?)?.toDouble() ?? 0.0;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -616,6 +861,8 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
       ),
       builder: (_) {
+        final imageUrl = report['image_url']?.toString() ?? '';
+
         return Padding(
           padding: const EdgeInsets.all(22),
           child: SingleChildScrollView(
@@ -646,21 +893,33 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                 const SizedBox(height: 20),
 
-                if (report['image_url'] != null)
+                if (imageUrl.isNotEmpty)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(15),
                     child: Image.network(
-                      report['image_url'],
+                      imageUrl,
                       width: double.infinity,
                       height: 210,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) {
+                        return Container(
+                          width: double.infinity,
+                          height: 210,
+                          color: Colors.grey.shade200,
+                          child: const Icon(
+                            Icons.image_outlined,
+                            size: 45,
+                            color: Colors.grey,
+                          ),
+                        );
+                      },
                     ),
                   ),
 
                 const SizedBox(height: 18),
 
                 Text(
-                  report['title']?.toString() ?? '',
+                  report['title']?.toString() ?? 'Civic Issue',
                   style: const TextStyle(
                     color: navy,
                     fontSize: 20,
@@ -684,9 +943,11 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                 _reviewItem(
                   'Distance',
-                  _formatDistance(report['distance'] as double),
+                  _formatDistance(distance),
                   icon: Icons.location_on_outlined,
                 ),
+
+                const SizedBox(height: 4),
 
                 Text(
                   report['description']?.toString() ?? '',
@@ -705,6 +966,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                   child: ElevatedButton(
                     onPressed: () {
                       Navigator.pop(context);
+
                       _openContribution(report);
                     },
                     style: ElevatedButton.styleFrom(
@@ -731,17 +993,17 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
   }
 
   // ==========================================================
-  // OPEN CONTRIBUTION
+  // OPEN CONTRIBUTION SCREEN
   // ==========================================================
 
   void _openContribution(Map<String, dynamic> report) {
     final reportId = report['id']?.toString();
 
-    if (reportId == null) {
+    if (reportId == null || reportId.isEmpty) {
       return;
     }
 
-    final distance = report['distance'] as double;
+    final distance = (report['distance'] as num?)?.toDouble() ?? 0.0;
 
     Navigator.push(
       context,
@@ -760,6 +1022,189 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
   }
 
   // ==========================================================
+  // DUPLICATE SECTION
+  // ==========================================================
+
+  Widget _buildDuplicateSection() {
+    // --------------------------------------------------------
+    // CHECKING
+    // --------------------------------------------------------
+
+    if (checkingDuplicate) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF4FF),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: const Color(0xFFDCE5F5)),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              width: 23,
+              height: 23,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: green),
+            ),
+
+            SizedBox(width: 14),
+
+            Expanded(
+              child: Text(
+                'Checking for similar reports nearby...',
+                style: TextStyle(color: navy, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // --------------------------------------------------------
+    // DUPLICATE FOUND
+    // --------------------------------------------------------
+
+    if (similarReports.isNotEmpty) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF8EF),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFF1D4AE)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF3E8DC),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: orange,
+                    size: 29,
+                  ),
+                ),
+
+                const SizedBox(width: 12),
+
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Potential Duplicate Detected',
+                        style: TextStyle(
+                          color: navy,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+
+                      SizedBox(height: 5),
+
+                      Text(
+                        'A similar civic issue has already been reported near this location.',
+                        style: TextStyle(
+                          color: Color(0xFF667085),
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 14),
+
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF1D9),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Text(
+                'To prevent duplicate reports, CivicMind will not create a new ticket for this issue. Please contribute evidence to the existing report instead.',
+                style: TextStyle(
+                  color: Color(0xFF694A1A),
+                  fontSize: 13,
+                  height: 1.45,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
+            // IMPORTANT:
+            // Explicit callback syntax fixes
+            // the Dart map type inference issue.
+            ...similarReports.map((report) => _similarReportCard(report)),
+          ],
+        ),
+      );
+    }
+
+    // --------------------------------------------------------
+    // NO DUPLICATE
+    // --------------------------------------------------------
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F7F1),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFC9EBDD)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.check_circle_outline, color: green, size: 32),
+
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'No Similar Report Found',
+                  style: TextStyle(
+                    color: navy,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 5),
+
+                Text(
+                  'Your report appears to be a new civic issue.',
+                  style: TextStyle(
+                    color: Colors.grey.shade700,
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================
   // BUILD
   // ==========================================================
 
@@ -770,7 +1215,9 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // Header
+            // ==================================================
+            // HEADER
+            // ==================================================
             Padding(
               padding: const EdgeInsets.fromLTRB(15, 10, 15, 8),
               child: Row(
@@ -797,7 +1244,9 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                             letterSpacing: 1,
                           ),
                         ),
+
                         SizedBox(height: 2),
+
                         Text(
                           'Incident Review',
                           style: TextStyle(
@@ -816,24 +1265,13 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                     },
                     icon: const Icon(Icons.close, color: Color(0xFF344054)),
                   ),
-
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: const BoxDecoration(
-                      color: green,
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.person_outline,
-                      color: Colors.white,
-                    ),
-                  ),
                 ],
               ),
             ),
 
-            // Progress
+            // ==================================================
+            // PROGRESS
+            // ==================================================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -848,7 +1286,9 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                           fontSize: 13,
                         ),
                       ),
+
                       const Spacer(),
+
                       Text(
                         'Incident Review & Verification',
                         style: TextStyle(
@@ -877,9 +1317,12 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
             const SizedBox(height: 15),
 
+            // ==================================================
+            // BODY
+            // ==================================================
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 35),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -904,7 +1347,9 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 18),
 
+                    // ==================================================
                     // PHOTO
+                    // ==================================================
                     if (imageBytes != null)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(18),
@@ -930,6 +1375,9 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 18),
 
+                    // ==================================================
+                    // REPORT DETAILS
+                    // ==================================================
                     _reviewItem(
                       'Issue Category',
                       widget.category,
@@ -948,16 +1396,94 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                       icon: Icons.description_outlined,
                     ),
 
-                    _reviewItem(
-                      'Location',
-                      '${widget.latitude.toStringAsFixed(6)}, '
-                          '${widget.longitude.toStringAsFixed(6)}',
-                      icon: Icons.location_on_outlined,
+                    // ==================================================
+                    // LOCATION
+                    // ==================================================
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.grey.shade200),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFEAF5F1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.location_on_outlined,
+                              color: green,
+                              size: 20,
+                            ),
+                          ),
+
+                          const SizedBox(width: 12),
+
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Location',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 4),
+
+                                loadingLocation
+                                    ? const Row(
+                                        children: [
+                                          SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: green,
+                                            ),
+                                          ),
+
+                                          SizedBox(width: 8),
+
+                                          Text(
+                                            'Finding address...',
+                                            style: TextStyle(
+                                              color: navy,
+                                              fontSize: 14,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Text(
+                                        locationText,
+                                        style: const TextStyle(
+                                          color: navy,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
 
                     const SizedBox(height: 5),
 
-                    // EDIT
+                    // ==================================================
+                    // EDIT BUTTON
+                    // ==================================================
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -979,200 +1505,112 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 28),
 
-                    // DUPLICATE SECTION
-                    if (checkingDuplicate)
-                      Container(
+                    // ==================================================
+                    // DUPLICATE CHECK
+                    // ==================================================
+                    const Text(
+                      'Duplicate Check',
+                      style: TextStyle(
+                        color: navy,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+
+                    const SizedBox(height: 6),
+
+                    Text(
+                      'CivicMind checks whether a similar issue already exists near this location.',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+
+                    const SizedBox(height: 14),
+
+                    _buildDuplicateSection(),
+
+                    const SizedBox(height: 28),
+
+                    // ==================================================
+                    // NEW REPORT BUTTON
+                    //
+                    // ONLY WHEN NO DUPLICATE
+                    // ==================================================
+                    if (!checkingDuplicate && similarReports.isEmpty)
+                      SizedBox(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF4FF),
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        child: const Row(
-                          children: [
-                            SizedBox(
-                              width: 23,
-                              height: 23,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: green,
-                              ),
+                        height: 56,
+                        child: ElevatedButton(
+                          onPressed: submitting ? null : _submitNewReport,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: orange,
+                            disabledBackgroundColor: Colors.grey.shade400,
+                            elevation: 3,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(28),
                             ),
-                            SizedBox(width: 14),
-                            Expanded(
-                              child: Text(
-                                'Checking for similar reports nearby...',
-                                style: TextStyle(
-                                  color: navy,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else if (similarReports.isNotEmpty)
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFF3E8DC),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.warning_amber_rounded,
-                                  color: orange,
-                                  size: 29,
-                                ),
-                              ),
-
-                              const SizedBox(width: 12),
-
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                          ),
+                          child: submitting
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     Text(
-                                      'Similar Reports Found Nearby',
+                                      'Confirm & Submit Report',
                                       style: TextStyle(
-                                        color: navy,
-                                        fontSize: 18,
+                                        color: Colors.white,
+                                        fontSize: 16,
                                         fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'A similar civic issue has already been reported near this location.',
-                                      style: TextStyle(
-                                        color: Color(0xFF667085),
-                                        fontSize: 13,
-                                        height: 1.4,
-                                      ),
+
+                                    SizedBox(width: 10),
+
+                                    Icon(
+                                      Icons.arrow_forward,
+                                      color: Colors.white,
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
-                          ),
+                        ),
+                      ),
 
-                          const SizedBox(height: 15),
-
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF4FF),
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            child: const Text(
-                              'Instead of creating a duplicate report, you can contribute additional evidence to an existing report.',
-                              style: TextStyle(
-                                color: Color(0xFF475467),
-                                fontSize: 13,
-                                height: 1.45,
-                              ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 15),
-
-                          ...similarReports.map(_similarReportCard),
-
-                          const SizedBox(height: 10),
-
-                          // Still allow new report
-                          SizedBox(
-                            width: double.infinity,
-                            height: 52,
-                            child: OutlinedButton(
-                              onPressed: submitting ? null : _submitNewReport,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: navy,
-                                side: const BorderSide(color: navy),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(27),
-                                ),
-                              ),
-                              child: const Text(
-                                'Submit as New Report',
-                                style: TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
-                    else
+                    // ==================================================
+                    // DUPLICATE MESSAGE
+                    // ==================================================
+                    if (!checkingDuplicate && similarReports.isNotEmpty)
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(18),
+                        padding: const EdgeInsets.all(15),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFE8F7F1),
-                          borderRadius: BorderRadius.circular(18),
+                          color: const Color(0xFFFFF1D9),
+                          borderRadius: BorderRadius.circular(15),
                         ),
-                        child: Column(
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Icon(
-                              Icons.check_circle_outline,
-                              color: green,
-                              size: 38,
-                            ),
+                            Icon(Icons.info_outline, color: orange, size: 22),
 
-                            const SizedBox(height: 10),
+                            SizedBox(width: 9),
 
-                            const Text(
-                              'No Similar Report Found',
-                              style: TextStyle(
-                                color: navy,
-                                fontSize: 17,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            const SizedBox(height: 5),
-
-                            Text(
-                              'Your report appears to be a new civic issue.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.grey.shade700,
-                                fontSize: 13,
-                              ),
-                            ),
-
-                            const SizedBox(height: 17),
-
-                            SizedBox(
-                              width: double.infinity,
-                              height: 53,
-                              child: ElevatedButton(
-                                onPressed: submitting ? null : _submitNewReport,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: orange,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(27),
-                                  ),
+                            Expanded(
+                              child: Text(
+                                'A new report cannot be submitted because a similar issue already exists. Please use “Contribute to This Report” above.',
+                                style: TextStyle(
+                                  color: Color(0xFF694A1A),
+                                  fontSize: 12.5,
+                                  height: 1.45,
                                 ),
-                                child: submitting
-                                    ? const SizedBox(
-                                        width: 23,
-                                        height: 23,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2.5,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Confirm & Submit Report',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
-                                      ),
                               ),
                             ),
                           ],
