@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signin_screen.dart';
 import 'photo_upload_screen.dart';
 import 'location_test_screen.dart';
+import 'my_reports_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -257,6 +258,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: orange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(30),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 54,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const MyReportsScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.assignment_outlined, color: navy),
+                      label: const Text(
+                        "My Report Issues",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: navy,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: navy),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(30),
                         ),

@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
 import 'home_screen.dart';
+import 'report_review_screen.dart';
 
 class ReportIssueScreen extends StatefulWidget {
   final XFile selectedImage;
@@ -354,7 +355,48 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
               width: double.infinity,
               height: 54,
               child: ElevatedButton(
-                onPressed: _submitReport,
+                onPressed: () {
+                  if (titleController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a title for the issue.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (selectedCategory == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please select an issue category.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (descriptionController.text.trim().isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please describe the issue.'),
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ReportReviewScreen(
+                        selectedImage: widget.selectedImage,
+                        latitude: widget.latitude,
+                        longitude: widget.longitude,
+                        title: titleController.text.trim(),
+                        category: selectedCategory!,
+                        description: descriptionController.text.trim(),
+                      ),
+                    ),
+                  );
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: orange,
                   shape: RoundedRectangleBorder(
