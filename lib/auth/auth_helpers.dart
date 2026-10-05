@@ -2,14 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-// ---------- রঙ ----------
 class AppColors {
   static const navy = Color(0xFF16233D);
   static const orange = Color(0xFFE8622C);
   static const bg = Color(0xFFF5F2EA);
 }
 
-// ---------- ১. সহজ error message ----------
 String friendlyAuthError(Object error) {
   final raw = error is AuthException ? error.message : error.toString();
   final msg = raw.toLowerCase();
@@ -63,7 +61,6 @@ void showAppSnack(BuildContext context, String message, {bool error = true}) {
     );
 }
 
-// ---------- ২. Validators ----------
 String? validateEmail(String? v) {
   if (v == null || v.trim().isEmpty) return 'Email is required';
   if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim())) {
@@ -75,26 +72,28 @@ String? validateEmail(String? v) {
 String? validatePhone(String? v) {
   if (v == null || v.trim().isEmpty) return 'Phone number is required';
   final cleaned = v.replaceAll(RegExp(r'[\s\-]'), '');
-  if (!RegExp(r'^\+?\d{10,15}$').hasMatch(cleaned))
+  if (!RegExp(r'^\+?\d{10,15}$').hasMatch(cleaned)) {
     return 'Enter a valid phone number';
+  }
   return null;
 }
 
-// ৮+ অক্ষর, uppercase, lowercase, number, special character
 String? validatePassword(String? v) {
   if (v == null || v.isEmpty) return 'Password is required';
   if (v.length < 8) return 'Use at least 8 characters';
-  if (!RegExp(r'[A-Z]').hasMatch(v))
+  if (!RegExp(r'[A-Z]').hasMatch(v)) {
     return 'Add at least one uppercase letter (A-Z)';
-  if (!RegExp(r'[a-z]').hasMatch(v))
+  }
+  if (!RegExp(r'[a-z]').hasMatch(v)) {
     return 'Add at least one lowercase letter (a-z)';
+  }
   if (!RegExp(r'\d').hasMatch(v)) return 'Add at least one number (0-9)';
-  if (!RegExp(r'[^A-Za-z0-9]').hasMatch(v))
+  if (!RegExp(r'[^A-Za-z0-9]').hasMatch(v)) {
     return 'Add at least one symbol (e.g. @ # ! %)';
+  }
   return null;
 }
 
-// ---------- ৩. UI helper ----------
 InputDecoration appField(String hint, {Widget? suffix}) {
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(14),
@@ -155,7 +154,6 @@ class BrandRow extends StatelessWidget {
   }
 }
 
-// Chrome/বড় স্ক্রিনে ফর্ম যেন ছড়িয়ে না যায়
 class CenteredForm extends StatelessWidget {
   final Widget child;
   const CenteredForm({super.key, required this.child});
@@ -172,7 +170,6 @@ class CenteredForm extends StatelessWidget {
   }
 }
 
-// Password strength bar
 class PasswordStrengthIndicator extends StatelessWidget {
   final String password;
   const PasswordStrengthIndicator({super.key, required this.password});
@@ -181,8 +178,9 @@ class PasswordStrengthIndicator extends StatelessWidget {
     int s = 0;
     if (password.length >= 8) s++;
     if (RegExp(r'[A-Z]').hasMatch(password) &&
-        RegExp(r'[a-z]').hasMatch(password))
+        RegExp(r'[a-z]').hasMatch(password)) {
       s++;
+    }
     if (RegExp(r'\d').hasMatch(password)) s++;
     if (RegExp(r'[^A-Za-z0-9]').hasMatch(password)) s++;
     return s;
@@ -237,7 +235,6 @@ class PasswordStrengthIndicator extends StatelessWidget {
   }
 }
 
-// ---------- ৪. Cooldown (rate limiting-এর UI অংশ) ----------
 class Cooldown {
   final VoidCallback onTick;
   Timer? _timer;

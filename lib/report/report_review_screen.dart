@@ -7,7 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'contribution_screen.dart';
-import 'home_screen.dart';
+import '../home_screen.dart';
 
 class ReportReviewScreen extends StatefulWidget {
   final XFile selectedImage;
@@ -35,7 +35,6 @@ class ReportReviewScreen extends StatefulWidget {
 class _ReportReviewScreenState extends State<ReportReviewScreen> {
   final supabase = Supabase.instance.client;
 
-  // Geocoding instance
   final Geocoding _geocoding = Geocoding();
 
   static const navy = Color(0xFF16233D);
@@ -45,24 +44,12 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
   Uint8List? imageBytes;
 
-  // ==========================================================
-  // LOCATION
-  // ==========================================================
-
   String locationText = 'Finding location...';
   bool loadingLocation = true;
-
-  // ==========================================================
-  // DUPLICATE DETECTION
-  // ==========================================================
 
   bool checkingDuplicate = true;
 
   List<Map<String, dynamic>> similarReports = [];
-
-  // ==========================================================
-  // SUBMISSION
-  // ==========================================================
 
   bool submitting = false;
 
@@ -74,10 +61,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     _loadAddress();
     _checkForDuplicates();
   }
-
-  // ==========================================================
-  // LOAD IMAGE
-  // ==========================================================
 
   Future<void> _loadImage() async {
     try {
@@ -93,30 +76,13 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     }
   }
 
-  // ==========================================================
-  // LOAD HUMAN READABLE LOCATION
-  // ==========================================================
-
-  // ==========================================================
-  // CHECK PLUS CODE
-  // ==========================================================
-
   bool _isPlusCode(String value) {
     final text = value.trim();
 
-    // Examples:
-    // VVW6+FG5
-    // 7Q5V+2M Sylhet
-    //
-    // A plus sign usually indicates a Google Plus Code.
     return RegExp(
       r'^[23456789CFGHJMPQRVWX]{4,}\+',
     ).hasMatch(text.toUpperCase());
   }
-
-  // ==========================================================
-  // CHECK DUPLICATE ADDRESS PART
-  // ==========================================================
 
   bool _isSameAsAny(String value, List<String> parts) {
     final target = value.trim().toLowerCase();
@@ -142,10 +108,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
         return;
       }
 
-      // ---------------------------------------------------------
-      // Choose the most useful placemark
-      // ---------------------------------------------------------
-
       Placemark place = placemarks.first;
 
       for (final p in placemarks) {
@@ -156,10 +118,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
           break;
         }
       }
-
-      // ---------------------------------------------------------
-      // Build CLEAN address
-      // ---------------------------------------------------------
 
       final List<String> parts = [];
 
@@ -172,7 +130,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
         if (_isPlusCode(text)) return;
 
-        // Prevent duplicate values
         final alreadyExists = parts.any(
           (existing) => existing.toLowerCase() == text.toLowerCase(),
         );
@@ -181,14 +138,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
           parts.add(text);
         }
       }
-
-      // ---------------------------------------------------------
-      // 1. HOUSE NUMBER + ROAD NAME
-      //
-      // Example:
-      // 17 + Lamabazar Road
-      // → 17 Lamabazar Road
-      // ---------------------------------------------------------
 
       final houseNumber = place.subThoroughfare?.trim();
       final roadName = place.thoroughfare?.trim();
@@ -200,46 +149,18 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
           !_isPlusCode(roadName)) {
         addPart('$houseNumber $roadName');
       } else {
-        // If house number is unavailable,
-        // use road name only.
         addPart(roadName);
 
-        // Only use street as fallback.
         if (roadName == null || roadName.isEmpty) {
           addPart(place.street);
         }
       }
 
-      // ---------------------------------------------------------
-      // 2. SUB-LOCALITY
-      //
-      // Example:
-      // Lamabazar
-      // ---------------------------------------------------------
-
       addPart(place.subLocality);
-
-      // ---------------------------------------------------------
-      // 3. CITY / LOCALITY
-      //
-      // Example:
-      // Sylhet
-      // ---------------------------------------------------------
 
       addPart(place.locality);
 
-      // ---------------------------------------------------------
-      // 4. COUNTRY
-      //
-      // Example:
-      // Bangladesh
-      // ---------------------------------------------------------
-
       addPart(place.country);
-
-      // ---------------------------------------------------------
-      // FINAL CLEAN ADDRESS
-      // ---------------------------------------------------------
 
       final address = parts.join(', ');
 
@@ -263,9 +184,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       });
     }
   }
-  // ==========================================================
-  // DISTANCE CALCULATION
-  // ==========================================================
 
   double _calculateDistance(
     double lat1,
@@ -303,20 +221,8 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     return '${(meters / 1000).toStringAsFixed(1)} km away';
   }
 
-  // ==========================================================
-  // DUPLICATE DETECTION
-  // ==========================================================
-
   Future<void> _checkForDuplicates() async {
     try {
-      /*
-       * Duplicate rules:
-       *
-       * 1. Same category
-       * 2. Existing report is NOT resolved
-       * 3. Existing report is within 500 meters
-       */
-
       final response = await supabase
           .from('reports')
           .select(
@@ -350,7 +256,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
           reportLng,
         );
 
-        // 500 meter duplicate radius
         if (distance <= 500) {
           final report = Map<String, dynamic>.from(item);
 
@@ -383,10 +288,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     }
   }
 
-  // ==========================================================
-  // UPLOAD IMAGE
-  // ==========================================================
-
   Future<String> _uploadImage() async {
     final user = supabase.auth.currentUser;
 
@@ -412,14 +313,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     return supabase.storage.from('report-images').getPublicUrl(filePath);
   }
 
-  // ==========================================================
-  // FINAL NEW REPORT SUBMISSION
-  // ==========================================================
-
   Future<void> _submitNewReport() async {
-    // Safety check:
-    // Duplicate থাকলে নতুন report submit করা যাবে না।
-
     if (similarReports.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -502,10 +396,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     }
   }
 
-  // ==========================================================
-  // SUCCESS DIALOG
-  // ==========================================================
-
   void _showSuccessDialog() {
     showDialog(
       context: context,
@@ -585,10 +475,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     );
   }
 
-  // ==========================================================
-  // REVIEW ITEM
-  // ==========================================================
-
   Widget _reviewItem(String label, String value, {IconData? icon}) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -641,10 +527,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     );
   }
 
-  // ==========================================================
-  // SIMILAR REPORT CARD
-  // ==========================================================
-
   Widget _similarReportCard(Map<String, dynamic> report) {
     final imageUrl = report['image_url']?.toString() ?? '';
 
@@ -674,7 +556,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // STATUS + DISTANCE
           Row(
             children: [
               Container(
@@ -711,7 +592,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
           const SizedBox(height: 13),
 
-          // IMAGE + DETAILS
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -778,7 +658,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
           const SizedBox(height: 15),
 
-          // VIEW FULL REPORT
           SizedBox(
             width: double.infinity,
             height: 46,
@@ -803,7 +682,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
           const SizedBox(height: 9),
 
-          // CONTRIBUTION BUTTON
           SizedBox(
             width: double.infinity,
             height: 50,
@@ -833,10 +711,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     );
   }
 
-  // ==========================================================
-  // IMAGE PLACEHOLDER
-  // ==========================================================
-
   Widget _imagePlaceholder() {
     return Container(
       width: 105,
@@ -845,10 +719,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       child: const Icon(Icons.image_outlined, color: Colors.grey, size: 32),
     );
   }
-
-  // ==========================================================
-  // FULL REPORT
-  // ==========================================================
 
   void _showFullReport(Map<String, dynamic> report) {
     final distance = (report['distance'] as num?)?.toDouble() ?? 0.0;
@@ -992,10 +862,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     );
   }
 
-  // ==========================================================
-  // OPEN CONTRIBUTION SCREEN
-  // ==========================================================
-
   void _openContribution(Map<String, dynamic> report) {
     final reportId = report['id']?.toString();
 
@@ -1021,15 +887,7 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     );
   }
 
-  // ==========================================================
-  // DUPLICATE SECTION
-  // ==========================================================
-
   Widget _buildDuplicateSection() {
-    // --------------------------------------------------------
-    // CHECKING
-    // --------------------------------------------------------
-
     if (checkingDuplicate) {
       return Container(
         width: double.infinity,
@@ -1059,10 +917,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
         ),
       );
     }
-
-    // --------------------------------------------------------
-    // DUPLICATE FOUND
-    // --------------------------------------------------------
 
     if (similarReports.isNotEmpty) {
       return Container(
@@ -1145,18 +999,11 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
             const SizedBox(height: 16),
 
-            // IMPORTANT:
-            // Explicit callback syntax fixes
-            // the Dart map type inference issue.
             ...similarReports.map((report) => _similarReportCard(report)),
           ],
         ),
       );
     }
-
-    // --------------------------------------------------------
-    // NO DUPLICATE
-    // --------------------------------------------------------
 
     return Container(
       width: double.infinity,
@@ -1204,10 +1051,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
     );
   }
 
-  // ==========================================================
-  // BUILD
-  // ==========================================================
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1215,9 +1058,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // ==================================================
-            // HEADER
-            // ==================================================
             Padding(
               padding: const EdgeInsets.fromLTRB(15, 10, 15, 8),
               child: Row(
@@ -1269,9 +1109,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
               ),
             ),
 
-            // ==================================================
-            // PROGRESS
-            // ==================================================
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -1317,9 +1154,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
             const SizedBox(height: 15),
 
-            // ==================================================
-            // BODY
-            // ==================================================
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 35),
@@ -1347,9 +1181,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 18),
 
-                    // ==================================================
-                    // PHOTO
-                    // ==================================================
                     if (imageBytes != null)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(18),
@@ -1375,9 +1206,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 18),
 
-                    // ==================================================
-                    // REPORT DETAILS
-                    // ==================================================
                     _reviewItem(
                       'Issue Category',
                       widget.category,
@@ -1396,9 +1224,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                       icon: Icons.description_outlined,
                     ),
 
-                    // ==================================================
-                    // LOCATION
-                    // ==================================================
                     Container(
                       margin: const EdgeInsets.only(bottom: 12),
                       padding: const EdgeInsets.all(14),
@@ -1481,9 +1306,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 5),
 
-                    // ==================================================
-                    // EDIT BUTTON
-                    // ==================================================
                     SizedBox(
                       width: double.infinity,
                       height: 50,
@@ -1505,9 +1327,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 28),
 
-                    // ==================================================
-                    // DUPLICATE CHECK
-                    // ==================================================
                     const Text(
                       'Duplicate Check',
                       style: TextStyle(
@@ -1534,11 +1353,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
 
                     const SizedBox(height: 28),
 
-                    // ==================================================
-                    // NEW REPORT BUTTON
-                    //
-                    // ONLY WHEN NO DUPLICATE
-                    // ==================================================
                     if (!checkingDuplicate && similarReports.isEmpty)
                       SizedBox(
                         width: double.infinity,
@@ -1585,9 +1399,6 @@ class _ReportReviewScreenState extends State<ReportReviewScreen> {
                         ),
                       ),
 
-                    // ==================================================
-                    // DUPLICATE MESSAGE
-                    // ==================================================
                     if (!checkingDuplicate && similarReports.isNotEmpty)
                       Container(
                         width: double.infinity,

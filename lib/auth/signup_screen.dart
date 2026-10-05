@@ -49,7 +49,6 @@ class _SignupScreenState extends State<SignupScreen> {
         },
       );
 
-      // আগে থেকেই registered email হলে Supabase খালি identities পাঠায়
       if (res.user != null && (res.user!.identities?.isEmpty ?? false)) {
         if (mounted) {
           showAppSnack(
@@ -160,15 +159,6 @@ class _SignupScreenState extends State<SignupScreen> {
                     ),
                     validator: validatePassword,
                   ),
-
-                  // PasswordStrengthIndicator(password: password.text),
-                  // const Padding(
-                  //   padding: EdgeInsets.only(top: 6),
-                  //   child: Text(
-                  //     'Use uppercase, lowercase, a number and a symbol.',
-                  //     style: TextStyle(fontSize: 12, color: Colors.black45),
-                  //   ),
-                  // ),
                   const SizedBox(height: 15),
                   fieldLabel('Confirm Password'),
                   TextFormField(

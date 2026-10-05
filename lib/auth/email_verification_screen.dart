@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_helpers.dart';
-import 'home_screen.dart';
+import '../home_screen.dart';
 
 class EmailVerificationScreen extends StatefulWidget {
   final String email;
@@ -28,7 +28,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
 
   bool loading = false;
 
-  // কোড এইমাত্র পাঠানো হয়েছে (Signup করার সময়), তাই শুরুতেই ৬০ সেকেন্ড Cooldown
   late final Cooldown resendCooldown = Cooldown(() {
     if (mounted) setState(() {});
   });
@@ -46,7 +45,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     super.dispose();
   }
 
-  // ---------- Verify Code ----------
   Future<void> _verifyCode() async {
     if (!formKey.currentState!.validate()) return;
     setState(() => loading = true);
@@ -63,7 +61,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
         throw AuthException('Verification failed. Please try again.');
       }
 
-      // এখন Session আছে, তাই Profile বানানো/আপডেট করা যাবে
       await supabase.from('profiles').upsert({
         'id': user.id,
         'full_name': widget.fullName,
@@ -87,7 +84,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
     }
   }
 
-  // ---------- Resend Code ----------
   Future<void> _resendCode() async {
     if (resendCooldown.active) return;
 

@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'signin_screen.dart';
-import 'photo_upload_screen.dart';
-import 'my_reports_screen.dart';
+
+import 'auth/signin_screen.dart';
+import 'dashboard/dashboard_screen.dart';
+import 'profile_screen.dart';
+import 'report/photo_upload_screen.dart';
+import 'report/my_reports_screen.dart';
+import 'report/explore_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,292 +16,144 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final supabase = Supabase.instance.client;
-
   static const navy = Color(0xFF16233D);
   static const orange = Color(0xFFE8622C);
   static const bg = Color(0xFFF5F2EA);
 
-  Map<String, dynamic>? profile;
-  bool loading = true;
+  int currentIndex = 1;
+
+  final supabase = Supabase.instance.client;
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+
+    _checkUser();
   }
 
-  Future<void> _loadProfile() async {
+  void _checkUser() {
     final user = supabase.auth.currentUser;
-    if (user == null) return;
 
-    try {
-      final data = await supabase
-          .from('profiles')
-          .select('full_name, phone, role')
-          .eq('id', user.id)
-          .maybeSingle();
+    if (user == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
 
-      setState(() {
-        profile = data;
-        loading = false;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const SigninScreen()),
+          (route) => false,
+        );
       });
-    } catch (e) {
-      setState(() => loading = false);
     }
   }
 
-  Future<void> _logout() async {
-    // লগ-আউট করার আগে একবার নিশ্চিত হয়ে নেওয়া ভালো অভ্যাস
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          "Sign out?",
-          style: TextStyle(color: navy, fontWeight: FontWeight.bold),
-        ),
-        content: const Text("Are you sure you want to sign out of CivicMind?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text(
-              "Cancel",
-              style: TextStyle(color: Colors.black54),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              "Sign out",
-              style: TextStyle(color: orange, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    await supabase.auth.signOut();
-
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
+  void _openReportPage() {
+    Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const SigninScreen()),
-      (route) => false,
+      MaterialPageRoute(builder: (_) => const PhotoUploadScreen()),
     );
+  }
+
+  void _onNavigationTap(int index) {
+    if (index == 2) {
+      _openReportPage();
+      return;
+    }
+
+    setState(() {
+      currentIndex = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final user = supabase.auth.currentUser;
-    final name = profile?['full_name'] ?? "there";
-    final role = profile?['role'] ?? "citizen";
-
     return Scaffold(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            Container(
-              height: 34,
-              width: 34,
-              decoration: const BoxDecoration(
-                color: navy,
-                shape: BoxShape.circle,
-              ),
-              child: const Center(
-                child: CircleAvatar(radius: 4, backgroundColor: orange),
-              ),
-            ),
-            const SizedBox(width: 10),
-            const Text(
-              "CivicMind",
-              style: TextStyle(
-                color: navy,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            onPressed: _logout,
-            icon: const Icon(Icons.logout_rounded, color: navy),
-            tooltip: "Sign out",
+
+      body: SafeArea(child: _buildCurrentPage()),
+
+      bottomNavigationBar: _buildBottomNavigationBar(),
+    );
+  }
+
+  Widget _buildCurrentPage() {
+    switch (currentIndex) {
+      case 0:
+        return const DashboardScreen();
+
+      case 1:
+        return const ExploreScreen();
+
+      case 3:
+        return const MyReportsScreen();
+
+      case 4:
+        return const ProfileScreen();
+
+      default:
+        return const ExploreScreen();
+    }
+  }
+
+  Widget _buildBottomNavigationBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, -3),
           ),
-          const SizedBox(width: 6),
         ],
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator(color: orange))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Welcome back, $name 👋",
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: navy,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    "Logged in as ${user?.email ?? ''}",
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      color: Colors.black54,
-                    ),
-                  ),
-                  const SizedBox(height: 18),
+      child: BottomNavigationBar(
+        currentIndex: currentIndex,
+        onTap: _onNavigationTap,
 
-                  // ---- role badge — প্রমাণ যে authentication + profile সঠিকভাবে কাজ করছে ----
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      // ignore: deprecated_member_use
-                      color: navy.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.verified_user_rounded,
-                          size: 16,
-                          color: navy,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          role.toString().toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: navy,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+        backgroundColor: Colors.white,
+        elevation: 0,
 
-                  const SizedBox(height: 30),
+        type: BottomNavigationBarType.fixed,
 
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          "✅ Authentication working",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: navy,
-                            fontSize: 15,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          "This is a placeholder home screen. Replace this with your real report feed, map, or dashboard once ready.",
-                          style: TextStyle(color: Colors.black54, height: 1.4),
-                        ),
-                      ],
-                    ),
-                  ),
+        selectedItemColor: orange,
+        unselectedItemColor: Colors.grey,
 
-                  const SizedBox(height: 24),
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
 
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const PhotoUploadScreen(),
-                          ),
-                        );
-                      },
-                      // onPressed: () {
-                      //   Navigator.push(
-                      //     context,
-                      //     MaterialPageRoute(
-                      //       builder: (_) => const LocationTestScreen(),
-                      //     ),
-                      //   );
-                      // },
-                      icon: const Icon(
-                        Icons.add_a_photo_outlined,
-                        color: Colors.white,
-                      ),
-                      label: const Text(
-                        "Report an issue",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: orange,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard_rounded),
+            label: "Dashboard",
+          ),
 
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const MyReportsScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.assignment_outlined, color: navy),
-                      label: const Text(
-                        "My Report Issues",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: navy,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: navy),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.explore_outlined),
+            activeIcon: Icon(Icons.explore_rounded),
+            label: "Explore",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_circle_outline, size: 32),
+            activeIcon: Icon(Icons.add_circle, size: 32),
+            label: "Report",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assignment_outlined),
+            activeIcon: Icon(Icons.assignment_rounded),
+            label: "My Reports",
+          ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person_outline),
+            activeIcon: Icon(Icons.person),
+            label: "Profile",
+          ),
+        ],
+      ),
     );
   }
 }

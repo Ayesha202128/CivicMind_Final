@@ -25,7 +25,6 @@ class _LocationTestScreenState extends State<LocationTestScreen> {
     });
 
     try {
-      // 1. Check whether location service is enabled
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
       if (!serviceEnabled) {
@@ -37,15 +36,12 @@ class _LocationTestScreenState extends State<LocationTestScreen> {
         return;
       }
 
-      // 2. Check current permission
       LocationPermission permission = await Geolocator.checkPermission();
 
-      // 3. Ask for permission if needed
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
-      // 4. User denied permission
       if (permission == LocationPermission.denied) {
         setState(() {
           loading = false;
@@ -54,7 +50,6 @@ class _LocationTestScreenState extends State<LocationTestScreen> {
         return;
       }
 
-      // 5. User permanently denied permission
       if (permission == LocationPermission.deniedForever) {
         setState(() {
           loading = false;
@@ -64,7 +59,6 @@ class _LocationTestScreenState extends State<LocationTestScreen> {
         return;
       }
 
-      // 6. Get current location
       final currentPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,

@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'location_screen.dart';
-import 'home_screen.dart';
+import '../home_screen.dart';
 import 'report_issue_screen.dart';
 
 class PhotoUploadScreen extends StatefulWidget {

@@ -1,9 +1,9 @@
-import 'package:civicmindapp/signin_screen.dart';
+import 'package:civicmindapp/auth/signin_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'auth_helpers.dart';
-import 'signin_screen.dart';
+import '../auth/auth_helpers.dart';
+import '../auth/signin_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String? email;
@@ -34,7 +34,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     super.initState();
     if (widget.email != null) {
       emailC.text = widget.email!;
-      resendCooldown.start(60); // কোড এইমাত্র পাঠানো হয়েছে
+      resendCooldown.start(60);
     }
   }
 
@@ -60,12 +60,13 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     try {
       await supabase.auth.resetPasswordForEmail(emailC.text.trim());
       resendCooldown.start(60);
-      if (mounted)
+      if (mounted) {
         showAppSnack(
           context,
           'A new code has been sent to your email.',
           error: false,
         );
+      }
     } catch (e) {
       if (mounted) showAppSnack(context, friendlyAuthError(e));
     }
@@ -82,8 +83,9 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
         type: OtpType.recovery,
       );
 
-      if (res.session == null)
+      if (res.session == null) {
         throw AuthException('Token has expired or is invalid');
+      }
 
       await supabase.auth.updateUser(UserAttributes(password: passwordC.text));
 

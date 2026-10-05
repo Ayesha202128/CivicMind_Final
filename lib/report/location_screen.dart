@@ -31,17 +31,9 @@ class _LocationScreenState extends State<LocationScreen> {
 
   Timer? _addressTimer;
 
-  // ----------------------------------------------------------
-  // SELECTED LOCATION
-  // ----------------------------------------------------------
-
   LatLng selectedLocation = const LatLng(23.8103, 90.4125);
 
   Position? currentPosition;
-
-  // ----------------------------------------------------------
-  // LOCATION INFORMATION
-  // ----------------------------------------------------------
 
   String selectedAddress = 'Dhaka, Bangladesh';
 
@@ -51,17 +43,9 @@ class _LocationScreenState extends State<LocationScreen> {
   bool mapReady = false;
   bool searching = false;
 
-  // ----------------------------------------------------------
-  // MAP READY
-  // ----------------------------------------------------------
-
   void _onMapReady() {
     mapReady = true;
   }
-
-  // ----------------------------------------------------------
-  // MAP MOVED
-  // ----------------------------------------------------------
 
   void _onPositionChanged(MapCamera camera, bool hasGesture) {
     if (!mounted) return;
@@ -72,19 +56,12 @@ class _LocationScreenState extends State<LocationScreen> {
       selectedLocation = center;
     });
 
-    // Don't reverse-geocode every single map movement.
-    // Wait until the user stops moving the map.
     _addressTimer?.cancel();
 
     _addressTimer = Timer(const Duration(milliseconds: 700), () {
       _getAddressFromCoordinates(center.latitude, center.longitude);
     });
   }
-
-  // ----------------------------------------------------------
-  // REVERSE GEOCODING
-  // COORDINATES -> ADDRESS
-  // ----------------------------------------------------------
 
   Future<void> _getAddressFromCoordinates(
     double latitude,
@@ -140,11 +117,6 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  // ----------------------------------------------------------
-  // SEARCH ADDRESS
-  // ADDRESS -> COORDINATES
-  // ----------------------------------------------------------
-
   Future<void> _searchLocation() async {
     final query = _searchController.text.trim();
 
@@ -185,7 +157,6 @@ class _LocationScreenState extends State<LocationScreen> {
         _mapController.move(newPoint, 17);
       }
 
-      // Get the actual address after moving.
       await _getAddressFromCoordinates(location.latitude, location.longitude);
     } catch (e) {
       if (!mounted) return;
@@ -198,10 +169,6 @@ class _LocationScreenState extends State<LocationScreen> {
       });
     }
   }
-
-  // ----------------------------------------------------------
-  // GET CURRENT GPS LOCATION
-  // ----------------------------------------------------------
 
   Future<void> _getCurrentLocation() async {
     setState(() {
@@ -266,10 +233,6 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  // ----------------------------------------------------------
-  // GO TO CURRENT LOCATION
-  // ----------------------------------------------------------
-
   void _goToMyLocation() {
     if (currentPosition == null) {
       _getCurrentLocation();
@@ -288,10 +251,6 @@ class _LocationScreenState extends State<LocationScreen> {
     _getAddressFromCoordinates(point.latitude, point.longitude);
   }
 
-  // ----------------------------------------------------------
-  // GOOGLE DIRECTIONS
-  // ----------------------------------------------------------
-
   Future<void> _openDirections() async {
     final lat = selectedLocation.latitude;
     final lng = selectedLocation.longitude;
@@ -305,10 +264,6 @@ class _LocationScreenState extends State<LocationScreen> {
     await _openExternalMap(url);
   }
 
-  // ----------------------------------------------------------
-  // GOOGLE STREET VIEW
-  // ----------------------------------------------------------
-
   Future<void> _openStreetView() async {
     final lat = selectedLocation.latitude;
     final lng = selectedLocation.longitude;
@@ -321,10 +276,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
     await _openExternalMap(url);
   }
-
-  // ----------------------------------------------------------
-  // OPEN EXTERNAL MAP
-  // ----------------------------------------------------------
 
   Future<void> _openExternalMap(Uri url) async {
     try {
@@ -344,10 +295,6 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  // ----------------------------------------------------------
-  // CONFIRM LOCATION
-  // ----------------------------------------------------------
-
   void _useThisLocation() {
     Navigator.push(
       context,
@@ -361,17 +308,9 @@ class _LocationScreenState extends State<LocationScreen> {
     );
   }
 
-  // ----------------------------------------------------------
-  // BACK
-  // ----------------------------------------------------------
-
   void _goBack() {
     Navigator.pop(context);
   }
-
-  // ----------------------------------------------------------
-  // DISPOSE
-  // ----------------------------------------------------------
 
   @override
   void dispose() {
@@ -380,18 +319,11 @@ class _LocationScreenState extends State<LocationScreen> {
     super.dispose();
   }
 
-  // ----------------------------------------------------------
-  // UI
-  // ----------------------------------------------------------
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bg,
 
-      // ======================================================
-      // APP BAR
-      // ======================================================
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
@@ -408,9 +340,6 @@ class _LocationScreenState extends State<LocationScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ==================================================
-              // TITLE
-              // ==================================================
               const Text(
                 'Where did this happen?',
                 style: TextStyle(
@@ -430,9 +359,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
               const SizedBox(height: 12),
 
-              // ==================================================
-              // SEARCH BAR
-              // ==================================================
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -476,9 +402,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
               const SizedBox(height: 10),
 
-              // ==================================================
-              // MAP
-              // ==================================================
               Expanded(
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
@@ -512,9 +435,6 @@ class _LocationScreenState extends State<LocationScreen> {
                         ],
                       ),
 
-                      // ==================================================
-                      // FIXED CENTER PIN
-                      // ==================================================
                       const IgnorePointer(
                         child: Center(
                           child: Padding(
@@ -535,9 +455,6 @@ class _LocationScreenState extends State<LocationScreen> {
                         ),
                       ),
 
-                      // ==================================================
-                      // CENTER DOT
-                      // ==================================================
                       const IgnorePointer(
                         child: Center(
                           child: Padding(
@@ -547,9 +464,6 @@ class _LocationScreenState extends State<LocationScreen> {
                         ),
                       ),
 
-                      // ==================================================
-                      // MY LOCATION BUTTON
-                      // ==================================================
                       Positioned(
                         right: 12,
                         bottom: 16,
@@ -568,9 +482,6 @@ class _LocationScreenState extends State<LocationScreen> {
                         ),
                       ),
 
-                      // ==================================================
-                      // OSM ATTRIBUTION
-                      // ==================================================
                       Positioned(
                         left: 10,
                         bottom: 10,
@@ -593,9 +504,6 @@ class _LocationScreenState extends State<LocationScreen> {
                         ),
                       ),
 
-                      // ==================================================
-                      // LOADING
-                      // ==================================================
                       if (loading)
                         Container(
                           color: Colors.white70,
@@ -625,9 +533,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
               const SizedBox(height: 10),
 
-              // ==================================================
-              // ERROR
-              // ==================================================
               if (errorMessage != null)
                 Container(
                   width: double.infinity,
@@ -644,9 +549,6 @@ class _LocationScreenState extends State<LocationScreen> {
                   ),
                 ),
 
-              // ==================================================
-              // ADDRESS CARD
-              // ==================================================
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(11),
@@ -706,9 +608,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
               const SizedBox(height: 8),
 
-              // ==================================================
-              // DIRECTIONS + STREET VIEW
-              // ==================================================
               Row(
                 children: [
                   Expanded(
@@ -761,9 +660,6 @@ class _LocationScreenState extends State<LocationScreen> {
 
               const SizedBox(height: 8),
 
-              // ==================================================
-              // CURRENT LOCATION + CONFIRM
-              // ==================================================
               Row(
                 children: [
                   Expanded(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'report_details_screen.dart';
 
 class MyReportsScreen extends StatefulWidget {
@@ -26,10 +27,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
   bool loading = true;
   String? errorMessage;
 
-  // ==========================================================
-  // INIT
-  // ==========================================================
-
   @override
   void initState() {
     super.initState();
@@ -38,10 +35,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
     _loadReports();
   }
-
-  // ==========================================================
-  // LOAD REPORTS FROM SUPABASE
-  // ==========================================================
 
   Future<void> _loadReports() async {
     if (!mounted) return;
@@ -67,9 +60,33 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
           .eq('user_id', user.id)
           .order('created_at', ascending: false);
 
+      final reports = List<Map<String, dynamic>>.from(data);
+
+      final contributionData = await supabase
+          .from('report_contributions')
+          .select('report_id');
+
+      final Map<String, int> contributionCounts = {};
+
+      for (final row in contributionData) {
+        final reportId = row['report_id']?.toString();
+
+        if (reportId == null || reportId.isEmpty) {
+          continue;
+        }
+
+        contributionCounts[reportId] = (contributionCounts[reportId] ?? 0) + 1;
+      }
+
+      for (final report in reports) {
+        final reportId = report['id']?.toString();
+
+        report['contribution_count'] = contributionCounts[reportId] ?? 0;
+      }
+
       if (!mounted) return;
 
-      allReports = List<Map<String, dynamic>>.from(data);
+      allReports = reports;
 
       _applyFilters();
 
@@ -88,18 +105,10 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
     }
   }
 
-  // ==========================================================
-  // SEARCH + STATUS FILTER
-  // ==========================================================
-
   void _applyFilters() {
     final searchText = _searchController.text.trim().toLowerCase();
 
     List<Map<String, dynamic>> result = List.from(allReports);
-
-    // --------------------------------------------------------
-    // STATUS FILTER
-    // --------------------------------------------------------
 
     if (selectedFilter != 'All') {
       result = result.where((report) {
@@ -121,10 +130,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
       }).toList();
     }
 
-    // --------------------------------------------------------
-    // SEARCH FILTER
-    // --------------------------------------------------------
-
     if (searchText.isNotEmpty) {
       result = result.where((report) {
         final title = report['title']?.toString().toLowerCase() ?? '';
@@ -141,10 +146,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
       filteredReports = result;
     });
   }
-
-  // ==========================================================
-  // STATUS TEXT
-  // ==========================================================
 
   String _statusText(String? status) {
     switch (status?.toLowerCase()) {
@@ -164,10 +165,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
     }
   }
 
-  // ==========================================================
-  // STATUS COLOR
-  // ==========================================================
-
   Color _statusColor(String? status) {
     switch (status?.toLowerCase()) {
       case 'resolved':
@@ -184,10 +181,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
     }
   }
 
-  // ==========================================================
-  // FORMAT DATE
-  // ==========================================================
-
   String _formatDate(String? dateString) {
     if (dateString == null) return '';
 
@@ -195,7 +188,9 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
       final date = DateTime.parse(dateString).toLocal();
 
       final day = date.day.toString().padLeft(2, '0');
+
       final month = date.month.toString().padLeft(2, '0');
+
       final year = date.year;
 
       int hour = date.hour;
@@ -210,15 +205,12 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
         hour = 12;
       }
 
-      return '$day/$month/$year • $hour:$minute $period';
-    } catch (e) {
+      return '$day/$month/$year • '
+          '$hour:$minute $period';
+    } catch (_) {
       return '';
     }
   }
-
-  // ==========================================================
-  // REPORT CARD
-  // ==========================================================
 
   Widget _buildReportCard(Map<String, dynamic> report) {
     final category = report['category']?.toString() ?? 'Unknown';
@@ -233,15 +225,16 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
     final statusColor = _statusColor(status);
 
+    final contributionCount =
+        (report['contribution_count'] as num?)?.toInt() ?? 0;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
 
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
-
         border: Border.all(color: Colors.grey.shade200),
-
         boxShadow: const [
           BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, 3)),
         ],
@@ -249,13 +242,17 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          Navigator.push(
+
+        onTap: () async {
+          final updated = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => ReportDetailsScreen(report: report),
             ),
           );
+          if (updated == true && mounted) {
+            _loadReports();
+          }
         },
 
         child: Padding(
@@ -265,9 +262,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
 
             children: [
-              // ==================================================
-              // IMAGE
-              // ==================================================
               ClipRRect(
                 borderRadius: BorderRadius.circular(13),
 
@@ -278,9 +272,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   child: imageUrl != null && imageUrl.isNotEmpty
                       ? Image.network(
                           imageUrl,
-
                           fit: BoxFit.cover,
-
                           errorBuilder: (context, error, stackTrace) {
                             return _imagePlaceholder();
                           },
@@ -291,15 +283,11 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
               const SizedBox(width: 12),
 
-              // ==================================================
-              // REPORT INFORMATION
-              // ==================================================
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
 
                   children: [
-                    // CATEGORY + STATUS
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
 
@@ -307,11 +295,8 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                         Expanded(
                           child: Text(
                             category,
-
                             maxLines: 1,
-
                             overflow: TextOverflow.ellipsis,
-
                             style: const TextStyle(
                               color: orange,
                               fontSize: 12,
@@ -327,16 +312,12 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                             horizontal: 9,
                             vertical: 5,
                           ),
-
                           decoration: BoxDecoration(
                             color: statusColor.withOpacity(0.10),
-
                             borderRadius: BorderRadius.circular(20),
                           ),
-
                           child: Text(
                             statusText,
-
                             style: TextStyle(
                               color: statusColor,
                               fontSize: 10,
@@ -349,14 +330,10 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                     const SizedBox(height: 7),
 
-                    // TITLE
                     Text(
                       title,
-
                       maxLines: 2,
-
                       overflow: TextOverflow.ellipsis,
-
                       style: const TextStyle(
                         color: navy,
                         fontSize: 15,
@@ -366,7 +343,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                     const SizedBox(height: 8),
 
-                    // DATE
                     Row(
                       children: [
                         const Icon(
@@ -380,11 +356,8 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                         Expanded(
                           child: Text(
                             _formatDate(report['created_at']?.toString()),
-
                             maxLines: 1,
-
                             overflow: TextOverflow.ellipsis,
-
                             style: const TextStyle(
                               color: Colors.black54,
                               fontSize: 11,
@@ -396,7 +369,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                     const SizedBox(height: 6),
 
-                    // CONTRIBUTION
                     Row(
                       children: [
                         const Icon(
@@ -407,9 +379,15 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                         const SizedBox(width: 4),
 
-                        const Text(
-                          '0 contributions',
-                          style: TextStyle(color: Colors.black54, fontSize: 11),
+                        Text(
+                          '$contributionCount '
+                          'contribution'
+                          '${contributionCount == 1 ? '' : 's'}',
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ),
@@ -427,23 +405,14 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
     );
   }
 
-  // ==========================================================
-  // IMAGE PLACEHOLDER
-  // ==========================================================
-
   Widget _imagePlaceholder() {
     return Container(
       color: Colors.grey.shade100,
-
       child: const Center(
         child: Icon(Icons.image_outlined, color: Colors.grey, size: 30),
       ),
     );
   }
-
-  // ==========================================================
-  // FILTER BUTTON
-  // ==========================================================
 
   Widget _filterButton(String title) {
     final isSelected = selectedFilter == title;
@@ -456,7 +425,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
         _applyFilters();
       },
-
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
 
@@ -464,30 +432,21 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
         decoration: BoxDecoration(
           color: isSelected ? navy : Colors.white,
-
           borderRadius: BorderRadius.circular(25),
-
           border: Border.all(color: isSelected ? navy : Colors.grey.shade300),
         ),
 
         child: Text(
           title,
-
           style: TextStyle(
             color: isSelected ? Colors.white : navy,
-
             fontSize: 12,
-
             fontWeight: FontWeight.w600,
           ),
         ),
       ),
     );
   }
-
-  // ==========================================================
-  // EMPTY FILTER RESULT
-  // ==========================================================
 
   Widget _buildNoResult() {
     return Center(
@@ -518,9 +477,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
               _searchController.text.trim().isNotEmpty
                   ? 'Try a different title or category.'
                   : 'There are no reports in this category yet.',
-
               textAlign: TextAlign.center,
-
               style: const TextStyle(color: Colors.black54),
             ),
           ],
@@ -529,20 +486,11 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
     );
   }
 
-  // ==========================================================
-  // DISPOSE
-  // ==========================================================
-
   @override
   void dispose() {
     _searchController.dispose();
-
     super.dispose();
   }
-
-  // ==========================================================
-  // BUILD
-  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
@@ -552,21 +500,17 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
       appBar: AppBar(
         backgroundColor: bg,
         elevation: 0,
-
         iconTheme: const IconThemeData(color: navy),
 
         title: const Text(
           'My Report Issues',
-
           style: TextStyle(color: navy, fontWeight: FontWeight.bold),
         ),
 
         actions: [
           IconButton(
             tooltip: 'Refresh',
-
             onPressed: loading ? null : _loadReports,
-
             icon: const Icon(Icons.refresh, color: navy),
           ),
         ],
@@ -582,18 +526,13 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
               ? _buildError()
               : Column(
                   children: [
-                    // ========================================
-                    // SEARCH
-                    // ========================================
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
 
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.white,
-
                           borderRadius: BorderRadius.circular(15),
-
                           border: Border.all(color: Colors.grey.shade300),
                         ),
 
@@ -616,10 +555,8 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                                 ? IconButton(
                                     onPressed: () {
                                       _searchController.clear();
-
                                       _applyFilters();
                                     },
-
                                     icon: const Icon(
                                       Icons.close,
                                       color: Colors.black45,
@@ -638,9 +575,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                       ),
                     ),
 
-                    // ========================================
-                    // FILTER BUTTONS
-                    // ========================================
                     SizedBox(
                       height: 43,
 
@@ -669,9 +603,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                     const SizedBox(height: 10),
 
-                    // ========================================
-                    // RESULT COUNT
-                    // ========================================
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
 
@@ -694,7 +625,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                           if (selectedFilter != 'All')
                             Text(
                               selectedFilter,
-
                               style: const TextStyle(
                                 color: navy,
                                 fontSize: 12,
@@ -707,23 +637,16 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                     const SizedBox(height: 8),
 
-                    // ========================================
-                    // REPORT LIST
-                    // ========================================
                     Expanded(
                       child: filteredReports.isEmpty
                           ? ListView(
                               physics: const AlwaysScrollableScrollPhysics(),
-
                               children: [_buildNoResult()],
                             )
                           : ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(),
-
                               padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-
                               itemCount: filteredReports.length,
-
                               itemBuilder: (context, index) {
                                 return _buildReportCard(filteredReports[index]);
                               },
@@ -735,10 +658,6 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
       ),
     );
   }
-
-  // ==========================================================
-  // ERROR
-  // ==========================================================
 
   Widget _buildError() {
     return ListView(
@@ -759,9 +678,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
                 Text(
                   errorMessage ?? 'Something went wrong.',
-
                   textAlign: TextAlign.center,
-
                   style: const TextStyle(color: navy, fontSize: 15),
                 ),
 

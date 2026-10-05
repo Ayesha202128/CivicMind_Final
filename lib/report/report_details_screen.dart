@@ -2,20 +2,74 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'edit_report_screen.dart';
 
-class ReportDetailsScreen extends StatelessWidget {
+class ReportDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> report;
 
   const ReportDetailsScreen({super.key, required this.report});
 
+  @override
+  State<ReportDetailsScreen> createState() => _ReportDetailsScreenState();
+}
+
+class _ReportDetailsScreenState extends State<ReportDetailsScreen> {
   static const navy = Color(0xFF16233D);
   static const orange = Color(0xFFE8622C);
   static const bg = Color(0xFFF5F2EA);
 
-  // ==========================================================
-  // STATUS TEXT
-  // ==========================================================
+  final supabase = Supabase.instance.client;
+
+  int contributionCount = 0;
+
+  bool loadingContributions = true;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _loadContributionCount();
+  }
+
+  Future<void> _loadContributionCount() async {
+    try {
+      final reportId = widget.report['id']?.toString();
+
+      if (reportId == null || reportId.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          contributionCount = 0;
+          loadingContributions = false;
+        });
+
+        return;
+      }
+
+      final response = await supabase
+          .from('report_contributions')
+          .select('id')
+          .eq('report_id', reportId);
+
+      if (!mounted) return;
+
+      setState(() {
+        contributionCount = response.length;
+        loadingContributions = false;
+      });
+    } catch (e) {
+      debugPrint('CONTRIBUTION COUNT ERROR: $e');
+
+      if (!mounted) return;
+
+      setState(() {
+        contributionCount = 0;
+        loadingContributions = false;
+      });
+    }
+  }
 
   String _statusText(String? status) {
     switch (status?.toLowerCase()) {
@@ -42,10 +96,6 @@ class ReportDetailsScreen extends StatelessWidget {
     }
   }
 
-  // ==========================================================
-  // STATUS COLOR
-  // ==========================================================
-
   Color _statusColor(String? status) {
     switch (status?.toLowerCase()) {
       case 'resolved':
@@ -69,21 +119,22 @@ class ReportDetailsScreen extends StatelessWidget {
     }
   }
 
-  // ==========================================================
-  // DATE FORMAT
-  // ==========================================================
-
   String _formatDate(String? dateString) {
-    if (dateString == null) return 'Unknown';
+    if (dateString == null || dateString.isEmpty) {
+      return 'Unknown';
+    }
 
     try {
       final date = DateTime.parse(dateString).toLocal();
 
       final day = date.day.toString().padLeft(2, '0');
+
       final month = date.month.toString().padLeft(2, '0');
+
       final year = date.year;
 
       int hour = date.hour;
+
       final minute = date.minute.toString().padLeft(2, '0');
 
       final period = hour >= 12 ? 'PM' : 'AM';
@@ -94,15 +145,12 @@ class ReportDetailsScreen extends StatelessWidget {
         hour = 12;
       }
 
-      return '$day/$month/$year • $hour:$minute $period';
+      return '$day/$month/$year • '
+          '$hour:$minute $period';
     } catch (e) {
       return 'Unknown';
     }
   }
-
-  // ==========================================================
-  // OPEN LOCATION
-  // ==========================================================
 
   Future<void> _openLocation(
     BuildContext context,
@@ -119,21 +167,17 @@ class ReportDetailsScreen extends StatelessWidget {
 
       if (!opened && context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the map.')),
+          const SnackBar(content: Text('Could not open Google Maps.')),
         );
       }
     } catch (e) {
       if (!context.mounted) return;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Could not open the map.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open Google Maps.')),
+      );
     }
   }
-
-  // ==========================================================
-  // STATUS PROGRESS
-  // ==========================================================
 
   int _statusIndex(String? status) {
     switch (status?.toLowerCase()) {
@@ -160,10 +204,6 @@ class ReportDetailsScreen extends StatelessWidget {
     }
   }
 
-  // ==========================================================
-  // STATUS TIMELINE ITEM
-  // ==========================================================
-
   Widget _timelineItem({
     required String title,
     required String description,
@@ -171,53 +211,63 @@ class ReportDetailsScreen extends StatelessWidget {
     required bool current,
     required bool last,
   }) {
-    final color = completed || current ? orange : Colors.grey.shade300;
+    final active = completed || current;
+
+    final color = active ? orange : Colors.grey.shade300;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
           width: 32,
+
           child: Column(
             children: [
               Container(
                 width: 20,
                 height: 20,
+
                 decoration: BoxDecoration(
-                  color: completed || current ? orange : Colors.grey.shade200,
+                  color: active ? orange : Colors.grey.shade200,
                   shape: BoxShape.circle,
                   border: Border.all(color: color, width: 2),
                 ),
-                child: completed || current
+
+                child: active
                     ? const Icon(Icons.check, color: Colors.white, size: 12)
                     : null,
               ),
+
               if (!last) Container(width: 2, height: 52, color: color),
             ],
           ),
         ),
+
         Expanded(
           child: Padding(
             padding: const EdgeInsets.only(bottom: 20),
+
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+
               children: [
                 Text(
                   title,
                   style: TextStyle(
-                    color: completed || current ? navy : Colors.black45,
+                    color: active ? navy : Colors.black45,
                     fontWeight: FontWeight.bold,
                     fontSize: 14,
                   ),
                 ),
+
                 const SizedBox(height: 3),
+
                 Text(
                   description,
                   style: TextStyle(
-                    color: completed || current
-                        ? Colors.black54
-                        : Colors.black38,
+                    color: active ? Colors.black54 : Colors.black38,
                     fontSize: 12,
+                    height: 1.4,
                   ),
                 ),
               ],
@@ -228,23 +278,23 @@ class ReportDetailsScreen extends StatelessWidget {
     );
   }
 
-  // ==========================================================
-  // STATUS TIMELINE
-  // ==========================================================
-
   Widget _buildStatusTimeline(String status) {
     final currentIndex = _statusIndex(status);
 
     return Container(
       width: double.infinity,
+
       padding: const EdgeInsets.all(18),
+
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.grey.shade200),
       ),
+
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
           const Text(
             'Report Status',
@@ -301,33 +351,145 @@ class ReportDetailsScreen extends StatelessWidget {
     );
   }
 
-  // ==========================================================
-  // LOCATION MAP
-  // ==========================================================
+  Widget _buildContributionCard() {
+    return Container(
+      width: double.infinity,
+
+      padding: const EdgeInsets.all(17),
+
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF5F1),
+              borderRadius: BorderRadius.circular(14),
+            ),
+
+            child: const Icon(
+              Icons.people_outline,
+              color: Color(0xFF007A5E),
+              size: 25,
+            ),
+          ),
+
+          const SizedBox(width: 13),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+                const Text(
+                  'Community Contributions',
+                  style: TextStyle(
+                    color: navy,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  loadingContributions
+                      ? 'Loading contributions...'
+                      : contributionCount == 0
+                      ? 'No one has contributed yet.'
+                      : '$contributionCount '
+                            'people contributed evidence to this report.',
+                  style: const TextStyle(
+                    color: Colors.black54,
+                    fontSize: 12.5,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          loadingContributions
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: orange,
+                  ),
+                )
+              : Container(
+                  constraints: const BoxConstraints(minWidth: 42),
+
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+
+                  decoration: BoxDecoration(
+                    color: orange.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+
+                  child: Text(
+                    '$contributionCount',
+                    textAlign: TextAlign.center,
+
+                    style: const TextStyle(
+                      color: orange,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildMap(BuildContext context, double latitude, double longitude) {
     final point = LatLng(latitude, longitude);
 
     return Container(
       height: 220,
+
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.grey.shade200),
       ),
+
       clipBehavior: Clip.antiAlias,
+
       child: Stack(
         children: [
           FlutterMap(
             options: MapOptions(
               initialCenter: point,
               initialZoom: 16,
+
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all,
               ),
             ),
+
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate:
+                    'https://tile.openstreetmap.org/'
+                    '{z}/{x}/{y}.png',
+
                 userAgentPackageName: 'com.example.civicmind',
               ),
 
@@ -337,6 +499,7 @@ class ReportDetailsScreen extends StatelessWidget {
                     point: point,
                     width: 50,
                     height: 50,
+
                     child: const Icon(
                       Icons.location_on,
                       color: orange,
@@ -352,11 +515,14 @@ class ReportDetailsScreen extends StatelessWidget {
             left: 12,
             right: 12,
             bottom: 12,
+
             child: ElevatedButton.icon(
               onPressed: () {
                 _openLocation(context, latitude, longitude);
               },
+
               icon: const Icon(Icons.directions, color: Colors.white),
+
               label: const Text(
                 'Open in Google Maps',
                 style: TextStyle(
@@ -364,9 +530,12 @@ class ReportDetailsScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               style: ElevatedButton.styleFrom(
                 backgroundColor: navy,
+
                 padding: const EdgeInsets.symmetric(vertical: 12),
+
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -378,23 +547,23 @@ class ReportDetailsScreen extends StatelessWidget {
     );
   }
 
-  // ==========================================================
-  // INFO ROW
-  // ==========================================================
-
   Widget _infoRow(IconData icon, String title, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
+
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
+
         children: [
           Container(
             width: 36,
             height: 36,
+
             decoration: BoxDecoration(
               color: orange.withOpacity(0.10),
               borderRadius: BorderRadius.circular(10),
             ),
+
             child: Icon(icon, color: orange, size: 19),
           ),
 
@@ -403,6 +572,7 @@ class ReportDetailsScreen extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+
               children: [
                 Text(
                   title,
@@ -427,27 +597,40 @@ class ReportDetailsScreen extends StatelessWidget {
     );
   }
 
-  // ==========================================================
-  // BUILD
-  // ==========================================================
+  Widget _imagePlaceholder() {
+    return Container(
+      height: 220,
+      width: double.infinity,
+
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+      ),
+
+      child: const Center(
+        child: Icon(Icons.image_outlined, color: Colors.grey, size: 55),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final title = report['title']?.toString() ?? 'Untitled Report';
+    final title = widget.report['title']?.toString() ?? 'Untitled Report';
 
-    final category = report['category']?.toString() ?? 'Unknown';
+    final category = widget.report['category']?.toString() ?? 'Unknown';
 
-    final description = report['description']?.toString() ?? '';
+    final description = widget.report['description']?.toString() ?? '';
 
-    final status = report['status']?.toString() ?? 'new';
+    final status = widget.report['status']?.toString() ?? 'new';
 
-    final imageUrl = report['image_url']?.toString();
+    final imageUrl = widget.report['image_url']?.toString();
 
-    final latitude = (report['latitude'] as num?)?.toDouble();
+    final latitude = (widget.report['latitude'] as num?)?.toDouble();
 
-    final longitude = (report['longitude'] as num?)?.toDouble();
+    final longitude = (widget.report['longitude'] as num?)?.toDouble();
 
     final statusText = _statusText(status);
+
     final statusColor = _statusColor(status);
 
     return Scaffold(
@@ -473,8 +656,9 @@ class ReportDetailsScreen extends StatelessWidget {
             onPressed: () async {
               final updated = await Navigator.push(
                 context,
+
                 MaterialPageRoute(
-                  builder: (_) => EditReportScreen(report: report),
+                  builder: (_) => EditReportScreen(report: widget.report),
                 ),
               );
 
@@ -489,18 +673,20 @@ class ReportDetailsScreen extends StatelessWidget {
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 25),
+
           children: [
-            // ==================================================
-            // REPORT IMAGE
-            // ==================================================
             if (imageUrl != null && imageUrl.isNotEmpty)
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
+
                 child: Image.network(
                   imageUrl,
+
                   height: 220,
                   width: double.infinity,
+
                   fit: BoxFit.cover,
+
                   errorBuilder: (context, error, stackTrace) {
                     return _imagePlaceholder();
                   },
@@ -511,18 +697,18 @@ class ReportDetailsScreen extends StatelessWidget {
 
             const SizedBox(height: 16),
 
-            // ==================================================
-            // TITLE + STATUS
-            // ==================================================
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
+
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+
                     children: [
                       Text(
                         category,
+
                         style: const TextStyle(
                           color: orange,
                           fontSize: 13,
@@ -534,6 +720,7 @@ class ReportDetailsScreen extends StatelessWidget {
 
                       Text(
                         title,
+
                         style: const TextStyle(
                           color: navy,
                           fontSize: 23,
@@ -551,12 +738,15 @@ class ReportDetailsScreen extends StatelessWidget {
                     horizontal: 11,
                     vertical: 7,
                   ),
+
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(20),
                   ),
+
                   child: Text(
                     statusText,
+
                     style: TextStyle(
                       color: statusColor,
                       fontSize: 11,
@@ -569,22 +759,24 @@ class ReportDetailsScreen extends StatelessWidget {
 
             const SizedBox(height: 18),
 
-            // ==================================================
-            // DESCRIPTION
-            // ==================================================
             Container(
               width: double.infinity,
+
               padding: const EdgeInsets.all(17),
+
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: Colors.grey.shade200),
               ),
+
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+
                 children: [
                   const Text(
                     'Description',
+
                     style: TextStyle(
                       color: navy,
                       fontSize: 16,
@@ -598,6 +790,7 @@ class ReportDetailsScreen extends StatelessWidget {
                     description.isEmpty
                         ? 'No description provided.'
                         : description,
+
                     style: const TextStyle(
                       color: Colors.black54,
                       fontSize: 14,
@@ -610,22 +803,24 @@ class ReportDetailsScreen extends StatelessWidget {
 
             const SizedBox(height: 14),
 
-            // ==================================================
-            // REPORT INFORMATION
-            // ==================================================
             Container(
               width: double.infinity,
+
               padding: const EdgeInsets.all(17),
+
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: Colors.grey.shade200),
               ),
+
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+
                 children: [
                   const Text(
                     'Report Information',
+
                     style: TextStyle(
                       color: navy,
                       fontSize: 16,
@@ -640,13 +835,13 @@ class ReportDetailsScreen extends StatelessWidget {
                   _infoRow(
                     Icons.access_time,
                     'Reported',
-                    _formatDate(report['created_at']?.toString()),
+                    _formatDate(widget.report['created_at']?.toString()),
                   ),
 
                   _infoRow(
                     Icons.update,
                     'Last Updated',
-                    _formatDate(report['updated_at']?.toString()),
+                    _formatDate(widget.report['updated_at']?.toString()),
                   ),
                 ],
               ),
@@ -654,30 +849,33 @@ class ReportDetailsScreen extends StatelessWidget {
 
             const SizedBox(height: 14),
 
-            // ==================================================
-            // STATUS TIMELINE
-            // ==================================================
+            _buildContributionCard(),
+
+            const SizedBox(height: 14),
+
             _buildStatusTimeline(status),
 
-            // ==================================================
-            // LOCATION
-            // ==================================================
             if (latitude != null && longitude != null) ...[
               const SizedBox(height: 14),
 
               Container(
                 width: double.infinity,
+
                 padding: const EdgeInsets.all(17),
+
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: Colors.grey.shade200),
                 ),
+
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+
                   children: [
                     const Text(
                       'Reported Location',
+
                       style: TextStyle(
                         color: navy,
                         fontSize: 16,
@@ -701,6 +899,7 @@ class ReportDetailsScreen extends StatelessWidget {
                           child: Text(
                             '${latitude.toStringAsFixed(6)}, '
                             '${longitude.toStringAsFixed(6)}',
+
                             style: const TextStyle(
                               color: Colors.black54,
                               fontSize: 12,
@@ -715,24 +914,6 @@ class ReportDetailsScreen extends StatelessWidget {
             ],
           ],
         ),
-      ),
-    );
-  }
-
-  // ==========================================================
-  // IMAGE PLACEHOLDER
-  // ==========================================================
-
-  Widget _imagePlaceholder() {
-    return Container(
-      height: 220,
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Center(
-        child: Icon(Icons.image_outlined, color: Colors.grey, size: 55),
       ),
     );
   }

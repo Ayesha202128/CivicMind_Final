@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_helpers.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
-import 'home_screen.dart';
+import '../home_screen.dart';
 
 class SigninScreen extends StatefulWidget {
   const SigninScreen({super.key});
@@ -51,9 +51,7 @@ class _SigninScreenState extends State<SigninScreen> {
         'role': meta?['role'] ?? 'citizen',
         'updated_at': DateTime.now().toIso8601String(),
       });
-    } catch (_) {
-      // profile বানাতে না পারলেও login আটকাবে না
-    }
+    } catch (_) {}
   }
 
   Future<void> login() async {

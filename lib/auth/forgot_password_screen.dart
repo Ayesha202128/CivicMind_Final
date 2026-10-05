@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'reset_password_screen.dart';
+import '../report/reset_password_screen.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -61,7 +61,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // dialog বন্ধ
+                Navigator.pop(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -151,10 +151,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                   keyboardType: TextInputType.emailAddress,
                   decoration: fieldDecoration("you@example.com"),
                   validator: (value) {
-                    if (value == null || value.isEmpty)
+                    if (value == null || value.isEmpty) {
                       return "Please enter your email";
-                    if (!value.contains("@") || !value.contains("."))
+                    }
+                    if (!value.contains("@") || !value.contains(".")) {
                       return "Enter a valid email";
+                    }
                     return null;
                   },
                 ),

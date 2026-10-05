@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'home_screen.dart';
+import '../home_screen.dart';
 
 class ContributionSuccessScreen extends StatelessWidget {
   const ContributionSuccessScreen({super.key});
@@ -23,7 +23,6 @@ class ContributionSuccessScreen extends StatelessWidget {
               children: [
                 const Spacer(),
 
-                // Success icon
                 Container(
                   width: 105,
                   height: 105,

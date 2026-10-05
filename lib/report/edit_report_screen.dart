@@ -39,7 +39,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
   bool saving = false;
   bool changingImage = false;
 
-  // নতুন ছবির file এবং তার bytes
   XFile? newImage;
   Uint8List? newImageBytes;
 
@@ -61,10 +60,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
     }
   }
 
-  // ==========================================================
-  // PICK NEW PHOTO
-  // ==========================================================
-
   Future<void> _pickNewImage() async {
     if (saving || changingImage) return;
 
@@ -81,7 +76,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
       if (picked == null) return;
 
-      // Select করার পরই bytes load করছি
       final bytes = await picked.readAsBytes();
 
       if (!mounted) return;
@@ -113,10 +107,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
       }
     }
   }
-
-  // ==========================================================
-  // UPDATE REPORT
-  // ==========================================================
 
   Future<void> _updateReport() async {
     FocusScope.of(context).unfocus();
@@ -169,10 +159,8 @@ class _EditReportScreenState extends State<EditReportScreen> {
     });
 
     try {
-      // আগের ছবির URL রাখছি
       String? imageUrl = widget.report['image_url']?.toString();
 
-      // নতুন ছবি select করা থাকলেই upload হবে
       if (newImage != null && newImageBytes != null) {
         final fileName = newImage!.name;
         final dotIndex = fileName.lastIndexOf('.');
@@ -207,7 +195,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
             .getPublicUrl(filePath);
       }
 
-      // Report update
       await supabase
           .from('reports')
           .update({
@@ -229,7 +216,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
         ),
       );
 
-      // আগের screen-এ true return
       Navigator.pop(context, true);
     } catch (e) {
       debugPrint('UPDATE REPORT ERROR: $e');
@@ -248,12 +234,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
     }
   }
 
-  // ==========================================================
-  // IMAGE PREVIEW
-  // ==========================================================
-
   Widget _buildImagePreview() {
-    // নতুন ছবি select করা থাকলে সেটাই দেখাবে
     if (newImageBytes != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(18),
@@ -273,7 +254,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
       );
     }
 
-    // নতুন ছবি না থাকলে existing image দেখাবে
     final imageUrl = widget.report['image_url']?.toString();
 
     if (imageUrl != null && imageUrl.trim().isNotEmpty) {
@@ -333,10 +313,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
     );
   }
 
-  // ==========================================================
-  // INPUT DECORATION
-  // ==========================================================
-
   InputDecoration _inputDecoration({
     required String hintText,
     required IconData icon,
@@ -381,10 +357,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
     super.dispose();
   }
 
-  // ==========================================================
-  // BUILD
-  // ==========================================================
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -419,12 +391,10 @@ class _EditReportScreenState extends State<EditReportScreen> {
               ),
               const SizedBox(height: 18),
 
-              // PHOTO PREVIEW
               _buildImagePreview(),
 
               const SizedBox(height: 10),
 
-              // CHANGE PHOTO
               SizedBox(
                 width: double.infinity,
                 height: 46,
@@ -460,7 +430,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
               const SizedBox(height: 20),
 
-              // ERROR
               if (errorMessage != null) ...[
                 Container(
                   width: double.infinity,
@@ -494,7 +463,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
                 const SizedBox(height: 15),
               ],
 
-              // TITLE
               _fieldLabel('Report Title'),
               const SizedBox(height: 7),
               TextField(
@@ -509,7 +477,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
               const SizedBox(height: 16),
 
-              // CATEGORY
               _fieldLabel('Category'),
               const SizedBox(height: 7),
               DropdownButtonFormField<String>(
@@ -535,7 +502,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
               const SizedBox(height: 16),
 
-              // DESCRIPTION
               _fieldLabel('Description'),
               const SizedBox(height: 7),
               TextField(
@@ -552,7 +518,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
               const SizedBox(height: 10),
 
-              // NOTE
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -583,7 +548,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
               const SizedBox(height: 22),
 
-              // SAVE CHANGES
               SizedBox(
                 width: double.infinity,
                 height: 54,
@@ -619,7 +583,6 @@ class _EditReportScreenState extends State<EditReportScreen> {
 
               const SizedBox(height: 10),
 
-              // CANCEL
               SizedBox(
                 width: double.infinity,
                 height: 50,

@@ -138,10 +138,8 @@ class _ContributionScreenState extends State<ContributionScreen> {
     });
 
     try {
-      // Upload optional evidence photo
       final evidenceUrl = await _uploadEvidence();
 
-      // Save contribution
       await supabase.from('report_contributions').insert({
         'report_id': widget.reportId,
         'user_id': user.id,
@@ -252,16 +250,6 @@ class _ContributionScreenState extends State<ContributionScreen> {
                   size: 28,
                 ),
               ),
-
-              // Container(
-              //   width: 40,
-              //   height: 40,
-              //   decoration: const BoxDecoration(
-              //     color: green,
-              //     shape: BoxShape.circle,
-              //   ),
-              //   child: const Icon(Icons.person_outline, color: Colors.white),
-              // ),
             ],
           ),
         ),

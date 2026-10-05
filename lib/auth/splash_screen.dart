@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'signin_screen.dart';
-import 'home_screen.dart'; // আপনার আসল home screen — নাম বদলে দিন যদি অন্য কিছু হয়
+import '../home_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});

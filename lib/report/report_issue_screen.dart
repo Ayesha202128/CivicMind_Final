@@ -150,7 +150,6 @@ class _ReportIssueScreenState extends State<ReportIssueScreen> {
                     ),
                     decoration: BoxDecoration(
                       color: isSelected
-                          // ignore: deprecated_member_use
                           ? orange.withOpacity(0.10)
                           : Colors.white,
                       borderRadius: BorderRadius.circular(14),
