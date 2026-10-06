@@ -30,7 +30,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
     "Pothole",
     "Garbage",
     "Streetlight",
-    "Water Leak",
+    "Water Logging",
     "Fallen Tree",
   ];
 

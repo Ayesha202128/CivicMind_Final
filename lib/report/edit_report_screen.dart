@@ -30,7 +30,7 @@ class _EditReportScreenState extends State<EditReportScreen> {
     'Garbage',
     'Electric Hazard',
     'Fallen Tree',
-    'Water Leak',
+    'Water Logging',
   ];
 
   String? selectedCategory;
